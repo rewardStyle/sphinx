@@ -1,3 +1,4 @@
+// Package sphinx is a Sphinx API library (not SphinxQL) that works with version 2.0.8 of Sphinx
 package sphinx
 
 import (
@@ -12,103 +13,6 @@ import (
 	"reflect"
 	"strings"
 	"time"
-)
-
-/* searchd command versions */
-const (
-	VER_MAJOR_PROTO        = 0x1
-	VER_COMMAND_SEARCH     = 0x119 // 0x11D for 2.1
-	VER_COMMAND_EXCERPT    = 0x104
-	VER_COMMAND_UPDATE     = 0x102 // 0x103 for 2.1
-	VER_COMMAND_KEYWORDS   = 0x100
-	VER_COMMAND_STATUS     = 0x100
-	VER_COMMAND_FLUSHATTRS = 0x100
-)
-
-/* matching modes */
-const (
-	SPH_MATCH_ALL = iota
-	SPH_MATCH_ANY
-	SPH_MATCH_PHRASE
-	SPH_MATCH_BOOLEAN
-	SPH_MATCH_EXTENDED
-	SPH_MATCH_FULLSCAN
-	SPH_MATCH_EXTENDED2
-)
-
-/* ranking modes (extended2 only) */
-const (
-	SPH_RANK_PROXIMITY_BM25 = iota // Default mode, phrase proximity major factor and BM25 minor one
-	SPH_RANK_BM25
-	SPH_RANK_NONE
-	SPH_RANK_WORDCOUNT
-	SPH_RANK_PROXIMITY
-	SPH_RANK_MATCHANY
-	SPH_RANK_FIELDMASK
-	SPH_RANK_SPH04
-	SPH_RANK_EXPR
-	SPH_RANK_TOTAL
-)
-
-/* sorting modes */
-const (
-	SPH_SORT_RELEVANCE = iota
-	SPH_SORT_ATTR_DESC
-	SPH_SORT_ATTR_ASC
-	SPH_SORT_TIME_SEGMENTS
-	SPH_SORT_EXTENDED
-	SPH_SORT_EXPR // Deprecated, never use it.
-)
-
-/* grouping functions */
-const (
-	SPH_GROUPBY_DAY = iota
-	SPH_GROUPBY_WEEK
-	SPH_GROUPBY_MONTH
-	SPH_GROUPBY_YEAR
-	SPH_GROUPBY_ATTR
-	SPH_GROUPBY_ATTRPAIR
-)
-
-/* searchd reply status codes */
-const (
-	SEARCHD_OK = iota
-	SEARCHD_ERROR
-	SEARCHD_RETRY
-	SEARCHD_WARNING
-)
-
-/* attribute types */
-const (
-	SPH_ATTR_NONE = iota
-	SPH_ATTR_INTEGER
-	SPH_ATTR_TIMESTAMP
-	SPH_ATTR_ORDINAL
-	SPH_ATTR_BOOL
-	SPH_ATTR_FLOAT
-	SPH_ATTR_BIGINT
-	SPH_ATTR_STRING
-	SPH_ATTR_MULTI   = 0x40000001
-	SPH_ATTR_MULTI64 = 0x40000002
-)
-
-/* searchd commands */
-const (
-	SEARCHD_COMMAND_SEARCH = iota
-	SEARCHD_COMMAND_EXCERPT
-	SEARCHD_COMMAND_UPDATE
-	SEARCHD_COMMAND_KEYWORDS
-	SEARCHD_COMMAND_PERSIST
-	SEARCHD_COMMAND_STATUS
-	SEARCHD_COMMAND_QUERY
-	SEARCHD_COMMAND_FLUSHATTRS
-)
-
-/* filter types */
-const (
-	SPH_FILTER_VALUES = iota
-	SPH_FILTER_RANGE
-	SPH_FILTER_FLOATRANGE
 )
 
 type filter struct {
@@ -1333,7 +1237,7 @@ func (sc *Client) doRequest(command int, version int, req []byte) (res []byte, e
 		// do nothing
 	case SEARCHD_WARNING:
 		wlen := binary.BigEndian.Uint32(res[0:4])
-		sc.warning = string(res[4:4+wlen])
+		sc.warning = string(res[4 : 4+wlen])
 		res = res[4+wlen:]
 	case SEARCHD_ERROR, SEARCHD_RETRY:
 		wlen := binary.BigEndian.Uint32(res[0:4])
@@ -1383,10 +1287,9 @@ func DegreeToRadian(degree float32) float32 {
 	return degree * math.Pi / 180
 }
 
-
 type byteParser struct {
 	stream []byte
-	p int
+	p      int
 }
 
 func (bp *byteParser) Int32() (i int) {
@@ -1408,7 +1311,7 @@ func (bp *byteParser) Uint64() (i uint64) {
 }
 
 func (bp *byteParser) Float32() (f float32, err error) {
-	buf := bytes.NewBuffer(bp.stream[bp.p : bp.p + 4])
+	buf := bytes.NewBuffer(bp.stream[bp.p : bp.p+4])
 	bp.p += 4
 	if err := binary.Read(buf, binary.BigEndian, &f); err != nil {
 		return 0, err
