@@ -1,5 +1,8 @@
 package sphinx
 
+// Maximum number of queries to do in parallel
+const MAX_QUERIES = 32
+
 // Command versions from sphinxclient.c
 const (
 	VER_COMMAND_EXCERPT  = 0x103
