@@ -1,7 +1,6 @@
 package sphinx
 
-// Maximum number of queries to do in parallel
-const MAX_QUERIES = 32
+const DefaultIndex = "*"
 
 // Command versions from sphinxclient.c
 const (
@@ -11,9 +10,11 @@ const (
 	VER_COMMAND_STATUS   = 0x100
 )
 
+type MatchMode int
+
 // Matching modes from sphinxclient.h
 const (
-	SPH_MATCH_ALL = iota
+	SPH_MATCH_ALL MatchMode = iota
 	SPH_MATCH_ANY
 	SPH_MATCH_PHRASE
 	SPH_MATCH_BOOLEAN
@@ -22,9 +23,11 @@ const (
 	SPH_MATCH_EXTENDED2
 )
 
+type RankMode int
+
 // Ranking modes from sphinxclient.h
 const (
-	SPH_RANK_PROXIMITY_BM25 = iota // Default mode, phrase proximity major factor and BM25 minor one
+	SPH_RANK_PROXIMITY_BM25 RankMode = iota // Default mode, phrase proximity major factor and BM25 minor one
 	SPH_RANK_BM25
 	SPH_RANK_NONE
 	SPH_RANK_WORDCOUNT
@@ -38,9 +41,11 @@ const (
 	SPH_RANK_DEFAULT = SPH_RANK_PROXIMITY_BM25
 )
 
+type SortMode int
+
 // Sorting modes, also from sphinxclient.h
 const (
-	SPH_SORT_RELEVANCE = iota
+	SPH_SORT_RELEVANCE SortMode = iota
 	SPH_SORT_ATTR_DESC
 	SPH_SORT_ATTR_ASC
 	SPH_SORT_TIME_SEGMENTS
@@ -81,9 +86,11 @@ const (
 	SPH_ATTR_MULTI64 = 0x40000002
 )
 
+type Command int
+
 // Searchd commands from sphinxclient.c
 const (
-	SEARCHD_COMMAND_SEARCH = iota
+	SEARCHD_COMMAND_SEARCH Command = iota
 	SEARCHD_COMMAND_EXCERPT
 	SEARCHD_COMMAND_UPDATE
 	SEARCHD_COMMAND_KEYWORDS
@@ -91,9 +98,11 @@ const (
 	SEARCHD_COMMAND_STATUS
 )
 
+type Filter int
+
 // Filter values from sphinxclient.h
 const (
-	SPH_FILTER_VALUES = iota
+	SPH_FILTER_VALUES Filter = iota
 	SPH_FILTER_RANGE
 	SPH_FILTER_FLOATRANGE
 )
