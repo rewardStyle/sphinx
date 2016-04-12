@@ -12,10 +12,23 @@ import (
 
 // Config holds options needed for SphinxClient to connect to the server.
 type Config struct {
-	Host           string
-	Port           int
-	ConnectTimeout time.Duration
-	PoolSize       int
+	Host             string
+	Port             int
+	ConnectTimeout   time.Duration
+	StartingPoolSize int
+	MaxPoolSize      int
+}
+
+// DefaultConfig provides sane defaults for the Sphinx Client
+// - Listen on localhost with default Sphinx API port
+// - Timeout of 10 seconds to connect to Sphinx server
+// - Starting / Maximum connection pool size
+var DefaultConfig = Config{
+	Host:             "localhost",
+	Port:             9312, // Default Sphinx API port
+	ConnectTimeout:   time.Second * 10,
+	StartingPoolSize: 10,
+	MaxPoolSize:      30,
 }
 
 // SphinxClient represents a pooled connection to the Sphinx server
@@ -26,23 +39,21 @@ type SphinxClient struct {
 }
 
 type SphinxQuery struct {
-}
-
-func rawInitializeSphinxConnection(sphinxConnection net.Conn) error {
-	reqBuffer := bytes.NewBuffer(make([]byte, 0, 16))
-	// Should this be a bytes.Buffer type?
-	addWordToBuffer(reqBuffer, SEARCHD_COMMAND_PERSIST)
-	addWordToBuffer(reqBuffer, 0) // Version
-	addIntToBuffer(reqBuffer, 4)  // Dummy body length
-	addIntToBuffer(reqBuffer, 1)  // Dummy body
-
-	_, err := reqBuffer.WriteTo(sphinxConnection)
-	return err
+	Keywords string
+	Index    string
+	// Discrete matching options
+	MatchType MatchMode
+	RankType  RankMode
+	SortType  SortMode
 }
 
 // Init creates a SphinxClient with an initial connection pool to the Sphinx
 // server.  We will need to
 func (s *SphinxClient) Init(config *Config) error {
+
+	if config == nil {
+		config = &DefaultConfig
+	}
 
 	// Factory function that returns a new connection for use in the pool
 	sphinxConnFactory := func() (net.Conn, error) {
@@ -64,12 +75,8 @@ func (s *SphinxClient) Init(config *Config) error {
 	return err
 }
 
-// Send command to Sphinx, one of which can be a query
-func (s *SphinxClient) doRequest(command, version int, request []byte) error {
-	return nil
-}
-
-// Close closes the socket used by the client
+// Close closes the connection pool used by the client, which closes all
+// outstanding connections
 func (s *SphinxClient) Close() {
 	s.ConnectionPool.Close()
 }
@@ -86,6 +93,10 @@ func (s *SphinxClient) Query(q SphinxQuery) error {
 		return err
 	}
 	defer conn.Close()
+
+	request := bytes.NewBuffer(make([]byte, 0, 32))
+
+	err = buildRequest(q, request)
 
 	// TODO: Send query and retrieve response
 
