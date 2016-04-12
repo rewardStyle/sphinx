@@ -1,0 +1,6 @@
+hash: b9ea495760b1c23f5e38f8ebfd6e23d238006ee0de89902830d67875fed03072
+updated: 2016-04-12T12:46:08.012740973-05:00
+imports:
+- name: github.com/fatih/pool
+  version: cba550ebf9bce999a02e963296d4bc7a486cb715
+devImports: []
