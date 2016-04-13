@@ -94,9 +94,11 @@ func (s *SphinxClient) Query(q SphinxQuery) error {
 	}
 	defer conn.Close()
 
-	request := bytes.NewBuffer(make([]byte, 0, 32))
-
+	request := bytes.NewBuffer(make([]byte, 0, 1024))
 	err = buildRequest(q, request)
+	if err != nil {
+		return err
+	}
 
 	// TODO: Send query and retrieve response
 
