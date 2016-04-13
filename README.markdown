@@ -1,11 +1,17 @@
 About
 -----
 
-The sphinx(full text search server) client package for the Go programming language.
+This is a Go Sphinx client, using the Sphinx API.  It has is based on the
+`github.com/yunge/sphinx` client, but has a number of important differences:
+- Client is threadsafe to use in multiple goroutines simultaneously
+- Pooled connection
+- Took out SphinxQL support
+- Intended to work on Sphinx 2.0.8-release (r3831), so some things have been written
+  with that goal in mind.
 
 ## Installation
 
-`go get github.com/yunge/sphinx`
+`go get github.com/rewardStyle/sphinx`
 
 
 ## Testing
