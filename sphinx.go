@@ -2,7 +2,6 @@
 package sphinx
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"time"
@@ -27,7 +26,7 @@ var DefaultConfig = Config{
 	Host:             "localhost",
 	Port:             9312, // Default Sphinx API port
 	ConnectTimeout:   time.Second * 10,
-	StartingPoolSize: 10,
+	StartingPoolSize: 1,
 	MaxPoolSize:      30,
 }
 
@@ -38,13 +37,45 @@ type SphinxClient struct {
 	ConnectionPool pool.Pool
 }
 
+// Limits:
+// Offset: Distance from beginning of results
+// Limit: Maximum matches to return
+// Cutoff: Stop searching after this limit has been reached.
+type Limits struct {
+	Offset uint32
+	Limit  uint32
+	Cutoff uint32
+}
+
+type FieldWeight struct {
+	FieldName   string
+	FieldWeight uint32
+}
+
+// FilterValue is an approximation of struct st_filter type from sphinxclient.c
+type FilterValue struct {
+	Attribute string
+	Type      Filter
+}
+
 type SphinxQuery struct {
 	Keywords string
 	Index    string
 	// Discrete matching options
 	MatchType MatchMode
 	RankType  RankMode
-	SortType  SortMode
+	// Sorting options
+	SortType     SortMode
+	SortByString string
+	// Filter options
+	Filters []FilterValue
+	// Offsets and max results
+	QueryLimits  Limits
+	FieldWeights []FieldWeight
+	IndexWeights []FieldWeight
+	// ID limits
+	MinID uint64
+	MaxID uint64
 }
 
 // Init creates a SphinxClient with an initial connection pool to the Sphinx
@@ -82,7 +113,7 @@ func (s *SphinxClient) Close() {
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
-func (s *SphinxClient) Query(q SphinxQuery) error {
+func (s *SphinxClient) Query(q *SphinxQuery) error {
 	conn, err := s.ConnectionPool.Get()
 	if err != nil {
 		// Type assertion as pool connection - have to since what is returned is
@@ -94,8 +125,8 @@ func (s *SphinxClient) Query(q SphinxQuery) error {
 	}
 	defer conn.Close()
 
-	request := bytes.NewBuffer(make([]byte, 0, 1024))
-	err = buildRequest(q, request)
+	requestBuf, err := buildRequest(q)
+	_ = requestBuf
 	if err != nil {
 		return err
 	}
