@@ -56,6 +56,12 @@ type FieldWeight struct {
 type FilterValue struct {
 	Attribute string
 	Type      Filter
+	Values    []uint64
+	Min       uint64
+	Max       uint64
+	Fmin      float32
+	Fmax      float32
+	Exclude   uint32
 }
 
 type SphinxQuery struct {

@@ -8,7 +8,8 @@ const (
 	VER_COMMAND_UPDATE   = 0x102
 	VER_COMMAND_KEYWORDS = 0x100
 	VER_COMMAND_STATUS   = 0x100
-	VER_COMMAND_SEARCH   = 0x119
+	// Version of the sphinx client as of 2.0.8 release
+	VER_COMMAND_SEARCH = 0x119
 )
 
 type MatchMode int
