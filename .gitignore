@@ -1,1 +1,10 @@
 *.txt
+nimcache
+fixture_data/fixture_data
+*.o
+*.lo
+_libs
+.libs
+so_locations
+test
+*.la
