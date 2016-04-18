@@ -16,6 +16,8 @@ type Config struct {
 	ConnectTimeout   time.Duration
 	StartingPoolSize int
 	MaxPoolSize      int
+	// Query-specific config option
+	MaxQueryTime time.Duration // Convert to milliseconds before sending
 }
 
 // DefaultConfig provides sane defaults for the Sphinx Client
@@ -26,6 +28,7 @@ var DefaultConfig = Config{
 	Host:             "localhost",
 	Port:             9312, // Default Sphinx API port
 	ConnectTimeout:   time.Second * 10,
+	MaxQueryTime:     0,
 	StartingPoolSize: 1,
 	MaxPoolSize:      30,
 }
@@ -42,9 +45,10 @@ type SphinxClient struct {
 // Limit: Maximum matches to return
 // Cutoff: Stop searching after this limit has been reached.
 type Limits struct {
-	Offset uint32
-	Limit  uint32
-	Cutoff uint32
+	Offset     uint32
+	Limit      uint32
+	Cutoff     uint32
+	MaxMatches uint32
 }
 
 type FieldWeight struct {
@@ -82,6 +86,21 @@ type SphinxQuery struct {
 	// ID limits
 	MinID uint64
 	MaxID uint64
+
+	MaxQueryTime time.Duration
+	Comment      string
+}
+
+// DefaultQueryOptions provides sane defaults for limits and index options.
+// If value not specified, Go's zero value is the default.
+var DefaultQueryOptions = SphinxQuery{
+	Index: DefaultIndex,
+	QueryLimits: Limits{
+		Offset:     0,
+		Limit:      20,
+		Cutoff:     0,
+		MaxMatches: 1000,
+	},
 }
 
 // Init creates a SphinxClient with an initial connection pool to the Sphinx
@@ -120,6 +139,14 @@ func (s *SphinxClient) Close() {
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
 func (s *SphinxClient) Query(q *SphinxQuery) error {
+	// Build request first to avoid contention over connections in pool
+	q.MaxQueryTime = s.config.MaxQueryTime
+
+	requestBuf, err := buildRequest(q)
+	if err != nil {
+		return err
+	}
+
 	conn, err := s.ConnectionPool.Get()
 	if err != nil {
 		// Type assertion as pool connection - have to since what is returned is
@@ -131,13 +158,7 @@ func (s *SphinxClient) Query(q *SphinxQuery) error {
 	}
 	defer conn.Close()
 
-	requestBuf, err := buildRequest(q)
-	_ = requestBuf
-	if err != nil {
-		return err
-	}
+	_, err = q.WriteTo(conn)
 
-	// TODO: Send query and retrieve response
-
-	return nil
+	return err
 }
