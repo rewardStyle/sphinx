@@ -63,6 +63,11 @@ const (
 	SPH_GROUPBY_YEAR
 	SPH_GROUPBY_ATTR
 	SPH_GROUPBY_ATTRPAIR
+
+	// Default Groupby option and function
+	SPH_GROUPBY_FUNC_DEFAULT = SPH_GROUPBY_ATTR
+	SPH_GROUPBY_DEFAULT      = ""
+	SPH_GROUPBY_SORT_DEFAULT = "@groupby desc"
 )
 
 // Searchd status codes from sphinxclient.h
