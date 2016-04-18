@@ -7,7 +7,9 @@ This is a Go Sphinx client, using the Sphinx API.  It has is based on the
 - Pooled connection
 - Took out SphinxQL support
 - Intended to work on Sphinx 2.0.8-release (r3831), so some things have been written
-  with that goal in mind.
+  with that goal in mind.  For example, doesn't do checking for old version when sending
+  filter values, instead just uses new version (uint64 vs. uint32).
+- Doesn't support GroupBy, GeoAnchor, SetSelect, or override options.
 
 ## Installation
 
