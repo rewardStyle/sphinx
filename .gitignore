@@ -8,3 +8,5 @@ _libs
 so_locations
 test
 *.la
+config.log
+config.status
