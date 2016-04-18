@@ -2487,8 +2487,7 @@ void sphinx_status_destroy ( char ** status, int num_rows, int num_cols )
 /**
 Added by Sloane Simmons 4-18-2016 in order to better test the driver externally
 **/
-int sphinx_get_num_requests( sphinx_client * client )
-{
+int sphinx_get_num_requests( sphinx_client * client ){
 	return !(client) || !(client->num_reqs) ? 0 : client->num_reqs;
 }
 
@@ -2496,12 +2495,13 @@ const char * sphinx_get_nth_request( sphinx_client * client, int n )
 {
 	return ( (n > client->num_reqs) || (n <= 0) ) ?
 				 NULL :
-				 client->reqs[ n - 1 ];
+				 client->reqs[n - 1];
 }
 
-int sphinx_get_nth_request_length( sphinx_client * client, int n)
+int sphinx_get_nth_request_length( sphinx_client * client, int n )
 {
 	return ( (n > client->num_reqs) || (n <= 0) ) ?
-				 -1 :
-				 client->req_lens[ n - 1 ];
+				 0 :
+				 client->req_lens[n - 1];
+
 }
