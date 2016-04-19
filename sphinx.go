@@ -158,7 +158,15 @@ func (s *SphinxClient) Query(q *SphinxQuery) error {
 	}
 	defer conn.Close()
 
-	_, err = q.WriteTo(conn)
+	_, err = requestBuf.WriteTo(conn)
+	if err != nil {
+		return err
+	}
+
+	// Listen for a response
+	requestBuf.Reset()
+	responseLength, err := requestBuf.ReadFrom(conn)
+	_ = responseLength
 
 	return err
 }
