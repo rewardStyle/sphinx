@@ -1,3 +1,4 @@
+*.swp
 *.txt
 nimcache
 fixture_data/fixture_data
