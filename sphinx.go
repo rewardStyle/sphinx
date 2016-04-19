@@ -91,16 +91,18 @@ type SphinxQuery struct {
 	Comment      string
 }
 
-// DefaultQueryOptions provides sane defaults for limits and index options.
+// DefaultQuery provides sane defaults for limits and index options.
 // If value not specified, Go's zero value is the default.
-var DefaultQueryOptions = SphinxQuery{
-	Index: DefaultIndex,
-	QueryLimits: Limits{
-		Offset:     0,
-		Limit:      20,
-		Cutoff:     0,
-		MaxMatches: 1000,
-	},
+func DefaultQuery() *SphinxQuery {
+	return &SphinxQuery{
+		Index: DefaultIndex,
+		QueryLimits: Limits{
+			Offset:     0,
+			Limit:      20,
+			Cutoff:     0,
+			MaxMatches: 1000,
+		},
+	}
 }
 
 // Init creates a SphinxClient with an initial connection pool to the Sphinx
@@ -142,7 +144,7 @@ func (s *SphinxClient) Query(q *SphinxQuery) error {
 	// Build request first to avoid contention over connections in pool
 	q.MaxQueryTime = s.config.MaxQueryTime
 
-	requestBuf, err := buildRequest(q)
+	headerBuf, requestBuf, err := buildRequest(q)
 	if err != nil {
 		return err
 	}
@@ -158,6 +160,10 @@ func (s *SphinxClient) Query(q *SphinxQuery) error {
 	}
 	defer conn.Close()
 
+	_, err = headerBuf.WriteTo(conn)
+	if err != nil {
+		return err
+	}
 	_, err = requestBuf.WriteTo(conn)
 	if err != nil {
 		return err

@@ -204,22 +204,22 @@ func rawInitializeSphinxConnection(sphinxConnection net.Conn) (err error) {
 	return
 }
 
-func buildRequest(query *SphinxQuery) (buf *bytes.Buffer, err error) {
-	// TODO: Calculate request length as in calc_req_len in sphinxclient.c
-	internalQuery, err := buildInternalQuery(query)
+func buildRequest(query *SphinxQuery) (headerBuf *bytes.Buffer, requestBuf *bytes.Buffer, err error) {
+	requestBuf, err = buildInternalQuery(query)
 	if err != nil {
 		return
 	}
-	requestLength := calculateRequestLength(internalQuery)
+	requestLength := calculateRequestLength(requestBuf)
 	headerBuffer := NewSafeWriter(16)
 
+	// Build query header based on request length - see sphinx_run_queries
 	headerBuffer.AddWordToBuffer(uint16(SEARCHD_COMMAND_SEARCH))
 	headerBuffer.AddWordToBuffer(VER_COMMAND_SEARCH)
 	headerBuffer.AddIntToBuffer(requestLength)
 	headerBuffer.AddIntToBuffer(0) // Dummy body?
 	headerBuffer.AddIntToBuffer(1) // Number of requests
 
-	buf = headerBuffer.Buf()
+	headerBuf = headerBuffer.Buf()
 	err = headerBuffer.Err()
 
 	return

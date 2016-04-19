@@ -1,6 +1,8 @@
 *.txt
 nimcache
 fixture_data/fixture_data
+fixture_data/generated/*
+fixture_data/generate_fixtures
 *.o
 *.lo
 _libs
