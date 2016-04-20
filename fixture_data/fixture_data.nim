@@ -49,6 +49,9 @@ proc main(query, index, comment: string) =
     while not finished:
       # line number
       # printf("%d\t",(pos div 4) + 1)
+      #
+      # FIXME: Fix this to make sure that we're outputting all bytes from buffer - not
+      # guaranteed to be a multiple of 4.
       printf(
         "%02x:%02x:%02x:%02x\n",
         cast[cuchar](buffer[pos]),

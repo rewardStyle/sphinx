@@ -16,6 +16,7 @@ func deserializeRequestBody(b *bytes.Buffer) <-chan string {
 		var word = make([]byte, 4)
 		var hexRepresentation = make([]string, 4)
 
+		// FIXME: Can't assume total length will be a multiple of 4
 		for byteLen, err := b.Read(word); err == nil && byteLen == 4; {
 			for i := range word {
 				hexRepresentation[i] = hex.EncodeToString(word[i : i+1])
@@ -53,7 +54,7 @@ func TestFixtureRequests(t *testing.T) {
 
 	for _, file := range files {
 		t.Logf("Testing fixture data for file %v\n", file.Name())
-		fileBaseName := strings.TrimSuffix(file.Name(), "_")
+		fileBaseName := strings.TrimSuffix(file.Name(), suffix)
 		fileParts := strings.Split(fileBaseName, "_")
 
 		// Normalize for missing comment and replace 'ALL' for index with '*'
@@ -69,6 +70,8 @@ func TestFixtureRequests(t *testing.T) {
 		q.Keywords = fileParts[0]
 		q.Index = fileParts[1]
 		q.Comment = fileParts[2]
+
+		t.Logf("Building request with query data: \n%v\t%v\t%v\n", q.Keywords, q.Index, q.Comment)
 
 		buf, err := buildInternalQuery(q)
 		if err != nil {

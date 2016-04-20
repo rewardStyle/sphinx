@@ -1,3 +1,6 @@
+// This is a helper program to generate request fixture files with a common naming
+// scheme while using the `fixture_data` program to hook into the
+// modified C Sphinx library.
 package main
 
 import (
