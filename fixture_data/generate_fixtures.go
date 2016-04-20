@@ -35,10 +35,14 @@ func main() {
 
 		fileName := strings.Join(metaData, "_")
 		fileName = strings.Replace(fileName, "*", "ALL", -1)
+		fileName = "fixture_data/generated/" + fileName + ".tst"
 
-		fixtureFile, err := os.Create(
-			"fixture_data/generated/" + fileName + ".tst",
-		)
+		// File already exists, so skip
+		if _, err := os.Stat(fileName); err == nil {
+			continue
+		}
+
+		fixtureFile, err := os.Create(fileName)
 
 		if err != nil {
 			log.Fatalf("Could not create fixture file: %v\n", err)
