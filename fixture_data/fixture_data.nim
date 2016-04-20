@@ -50,7 +50,7 @@ proc main(query, index, comment: string) =
       # line number
       # printf("%d\t",(pos div 4) + 1)
       printf(
-        "%02X:%02X:%02X:%02X\n",
+        "%02x:%02x:%02x:%02x\n",
         cast[cuchar](buffer[pos]),
         cast[cuchar](buffer[pos + 1]),
         cast[cuchar](buffer[pos + 2]),

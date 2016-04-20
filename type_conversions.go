@@ -104,14 +104,17 @@ func (s *SafeWriter) Buf() *bytes.Buffer {
 
 func NewSafeWriter(size uint) (swriter *SafeWriter) {
 
-	if size == 0 {
+	if size != 0 {
 		swriter = &SafeWriter{
 			internalBuf: bytes.NewBuffer(make([]byte, 0, int(size))),
 			err:         nil,
 		}
 		return
 	}
-	swriter = &SafeWriter{}
+	swriter = &SafeWriter{
+		internalBuf: new(bytes.Buffer),
+		err:         nil,
+	}
 	return
 }
 
@@ -124,7 +127,7 @@ func calculateRequestLength(buf *bytes.Buffer) uint32 {
 
 // Mostly taken from sphinx_add_query
 func buildInternalQuery(query *SphinxQuery) (buf *bytes.Buffer, err error) {
-	var internalQuery = SafeWriter{}
+	var internalQuery = NewSafeWriter(0)
 	internalQuery.AddIntToBuffer(query.QueryLimits.Offset)
 	internalQuery.AddIntToBuffer(query.QueryLimits.Limit)
 	internalQuery.AddIntToBuffer(uint32(query.MatchType)) // Match Mode
