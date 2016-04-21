@@ -1,0 +1,22 @@
+machine:
+    environment:
+        GO15VENDOREXPERIMENT: 1
+        GOPATH: /home/ubuntu/.go_workspace/
+        IMPORT_PATH: "src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
+        BASE_DIR: github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
+        CHECKOUT: /home/ubuntu/$CIRCLE_PROJECT_REPONAME
+    services:
+        - docker
+
+dependencies:
+    pre:
+        - go get github.com/Masterminds/glide
+    override:
+        - sudo rm -rf /home/ubuntu/.go_workspace/src
+        - mkdir -p "$(dirname $GOPATH/$IMPORT_PATH)"
+        - cp -R $CHECKOUT/ $GOPATH/src/github.com/$CIRCLE_PROJECT_USERNAME
+
+test:
+    override:
+        - make test:
+            pwd: "../.go_workspace/$IMPORT_PATH"
