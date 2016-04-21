@@ -105,6 +105,8 @@ func DefaultQuery() *SphinxQuery {
 	}
 }
 
+type SphinxResult struct{}
+
 // Init creates a SphinxClient with an initial connection pool to the Sphinx
 // server.  We will need to
 func (s *SphinxClient) Init(config *Config) error {
@@ -140,13 +142,13 @@ func (s *SphinxClient) Close() {
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
-func (s *SphinxClient) Query(q *SphinxQuery) error {
+func (s *SphinxClient) Query(q *SphinxQuery) ([]SphinxResult, error) {
 	// Build request first to avoid contention over connections in pool
 	q.MaxQueryTime = s.config.MaxQueryTime
 
-	headerBuf, requestBuf, err := buildRequest(q)
+	headerBuf, requestResponseBuf, err := buildRequest(q)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	conn, err := s.ConnectionPool.Get()
@@ -156,23 +158,26 @@ func (s *SphinxClient) Query(q *SphinxQuery) error {
 		if poolConn, ok := conn.(*pool.PoolConn); ok {
 			poolConn.MarkUnusable()
 		}
-		return err
+		return nil, err
 	}
 	defer conn.Close()
 
 	_, err = headerBuf.WriteTo(conn)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = requestBuf.WriteTo(conn)
+	_, err = requestResponseBuf.WriteTo(conn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Listen for a response
-	requestBuf.Reset()
-	responseLength, err := requestBuf.ReadFrom(conn)
-	_ = responseLength
+	requestResponseBuf.Reset()
+	_, err = requestResponseBuf.ReadFrom(conn)
+	if err != nil {
+		return nil, err
+	}
 
-	return err
+	results, err := getResultsFromBuffer(requestResponseBuf)
+
+	return results, err
 }
