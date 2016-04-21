@@ -42,29 +42,22 @@ proc main(query, index, comment: string) =
 
     if buffer.isNil: continue
 
-    var
-      finished = false
-      pos = 0
+    # Header of buffer length
+    echo buflen
 
-    while not finished:
-      # line number
-      # printf("%d\t",(pos div 4) + 1)
-      #
-      # FIXME: Fix this to make sure that we're outputting all bytes from buffer - not
-      # guaranteed to be a multiple of 4.
-      printf(
-        "%02x:%02x:%02x:%02x\n",
-        cast[cuchar](buffer[pos]),
-        cast[cuchar](buffer[pos + 1]),
-        cast[cuchar](buffer[pos + 2]),
-        cast[cuchar](buffer[pos + 3]),
-      )
+    for j in 0 .. <buflen:
+      if j == 0:
+        printf("%02x:",cast[cuchar](buffer[j]))
+        continue
+      # Every 4 characters need to print newline
+      case j mod 4
+      of 0:
+        printf("\n%02x:",cast[cuchar](buffer[j]))
+      of 3:
+        printf("%02x",cast[cuchar](buffer[j]))
+      else:
+        printf("%02x:",cast[cuchar](buffer[j]))
 
-      if pos+3 >= buflen:
-        finished = true
-        break
-
-      pos += 4
 
   client.destroy()
 

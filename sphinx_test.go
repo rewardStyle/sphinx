@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -14,17 +15,23 @@ func deserializeRequestBody(b *bytes.Buffer) <-chan string {
 	outputChannel := make(chan string)
 	go func() {
 		var word = make([]byte, 4)
-		var hexRepresentation = make([]string, 4)
 
-		// FIXME: Can't assume total length will be a multiple of 4
-		for byteLen, err := b.Read(word); err == nil && byteLen == 4; {
-			for i := range word {
-				hexRepresentation[i] = hex.EncodeToString(word[i : i+1])
+		outputChannel <- strconv.Itoa(b.Len())
+
+		for byteLength, err := b.Read(word); err == nil; byteLength, err = b.Read(word) {
+			var hexRepresentation = make([]string, 0, byteLength)
+			for i := 0; i < byteLength; i++ {
+				hexRepresentation = append(hexRepresentation, hex.EncodeToString(word[i:i+1]))
 			}
 
-			outputChannel <- strings.Join(hexRepresentation, ":")
-			byteLen, err = b.Read(word)
+			output := strings.Join(hexRepresentation, ":")
+			// Full 4-byte representation with separators is 11 characters long
+			if len(output) != 11 {
+				output = output + ":"
+			}
+			outputChannel <- output
 		}
+
 		close(outputChannel)
 	}()
 	return outputChannel
@@ -71,8 +78,6 @@ func TestFixtureRequests(t *testing.T) {
 		q.Index = fileParts[1]
 		q.Comment = fileParts[2]
 
-		t.Logf("Building request with query data: \n%v\t%v\t%v\n", q.Keywords, q.Index, q.Comment)
-
 		buf, err := buildInternalQuery(q)
 		if err != nil {
 			t.Errorf(
@@ -92,8 +97,25 @@ func TestFixtureRequests(t *testing.T) {
 		}
 		fixtureLines := bufio.NewScanner(fixtureFile)
 
+		if !fixtureLines.Scan() {
+			t.Fatalf("Can't read first line (buffer size) from the fixture data.")
+		}
+
+		generatedRequestBody := deserializeRequestBody(buf)
+		header := <-generatedRequestBody
+		fixtureHeader := fixtureLines.Text()
+
+		if header != fixtureLines.Text() {
+			t.Errorf(
+				"Buffer length mismatch: fixture data gives %v bytes, generated is %v bytes\n",
+				fixtureHeader,
+				header,
+			)
+		}
+
+		t.Logf("Buffer length: %v\n", header)
 		line := 0
-		for hexLine := range deserializeRequestBody(buf) {
+		for hexLine := range generatedRequestBody {
 			line++
 			// We're leaking a goroutine but it doesn't matter - quitting test anyway
 			if !fixtureLines.Scan() {
@@ -106,7 +128,7 @@ func TestFixtureRequests(t *testing.T) {
 				break
 			}
 			fixtureText := fixtureLines.Text()
-			t.Logf("%v\t%v\n", fixtureText, hexLine)
+			t.Logf("%-11v\t%-11v\n", fixtureText, hexLine)
 			if fixtureText != hexLine {
 				t.Errorf(
 					"Mismatch on line %v: \n%v\ndoes not match\n%v\n", line, fixtureText, hexLine,
