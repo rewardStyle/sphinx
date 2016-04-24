@@ -142,7 +142,7 @@ func (s *SphinxClient) Close() {
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
-func (s *SphinxClient) Query(q *SphinxQuery) ([]SphinxResult, error) {
+func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	// Build request first to avoid contention over connections in pool
 	q.MaxQueryTime = s.config.MaxQueryTime
 
@@ -177,7 +177,7 @@ func (s *SphinxClient) Query(q *SphinxQuery) ([]SphinxResult, error) {
 		return nil, err
 	}
 
-	results, err := getResultsFromBuffer(requestResponseBuf)
+	result, err := getResultFromBuffer(requestResponseBuf)
 
-	return results, err
+	return result, err
 }
