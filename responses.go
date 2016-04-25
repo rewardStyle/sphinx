@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 )
 
@@ -23,22 +24,29 @@ type ResponseReader struct {
 	internalErr error
 }
 
-// ReadHeader gets metadata from the start of the buffer
-func (r *ResponseReader) ReadHeader() *ResponseHeader {
-	// Read out each piece first since will be NOPs if there is a failure
-	status := r.ReadWord()
-	version := r.ReadWord()
-	length := r.ReadInt()
+// SphinxResult is a container for all of the fields and
+type SphinxResult struct{}
 
-	if r.internalErr != nil {
-		return nil
+// Read response header - gives header size
+func readHeader(r io.Reader) (header *ResponseHeader, err error) {
+	const headerSize = 8
+	headerBytes := make([]byte, 8)
+
+	_, err = io.ReadFull(r, headerBytes)
+	if err != nil {
+		return
 	}
 
-	return &ResponseHeader{
+	status := binary.BigEndian.Uint16(headerBytes[0:2])
+	version := binary.BigEndian.Uint16(headerBytes[2:4])
+	len := binary.BigEndian.Uint32(headerBytes[4:8])
+
+	header = &ResponseHeader{
 		status,
 		version,
-		length,
+		len,
 	}
+	return
 }
 
 // ReadWord parses 16 bit integer (short) in BigEndian byte order
@@ -81,11 +89,15 @@ func (r *ResponseReader) ReadString() (s string) {
 
 	// This is a bit tortured - return if already have error or if string length
 	// is invalid, but shouldn't overwrite error if already there.
-	if stringLength <= 0 {
+	if stringLength < 0 {
 		if r.internalErr == nil {
 			r.internalErr = fmt.Errorf("Invalid string length: %v\n", stringLength)
 			return
 		}
+	}
+
+	if stringLength == 0 {
+		return
 	}
 
 	if r.internalErr != nil {
@@ -113,6 +125,7 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 		return nil, r.internalErr
 	}
 
+	// Response has its own status
 	switch status {
 	case SEARCHD_OK:
 		break
@@ -125,18 +138,36 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 		return
 	}
 
-	return nil, nil
+	result = new(SphinxResult)
+
+	numFields := r.ReadInt()
+	if r.internalErr != nil {
+		return nil, r.internalErr
+	}
+
+	fields := make([]string, int(numFields))
+	for i := 0; i < int(numFields); i++ {
+		fields[i] = r.ReadString()
+	}
+
+	numAttrs := r.ReadInt()
+	if r.internalErr != nil {
+		return nil, r.internalErr
+	}
+
+	for i := 0; i < int(numAttrs); i++ {
+		_ = i
+	}
+
+	return nil, r.internalErr
 }
 
 // getResultsFromBuffer parses out the response data from the buffer
 // and make sure that everything is okay with the response.  Mainly based
 // on net_get_response and latter part of sphinx_run_queries
-func getResultFromBuffer(b *bytes.Buffer) (result *SphinxResult, searchError error) {
+func getResultFromBuffer(header *ResponseHeader, b *bytes.Buffer) (result *SphinxResult, searchError error) {
 	var reader = ResponseReader{Buffer: b, internalErr: nil}
-	header := reader.ReadHeader()
-	if reader.internalErr != nil {
-		return nil, reader.internalErr
-	}
+
 	switch header.status {
 	case SEARCHD_OK:
 		fallthrough

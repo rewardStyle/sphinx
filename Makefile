@@ -15,4 +15,7 @@ fixturedata: fixture_generator
 	fixture_data/generate_fixtures
 
 test: fixturedata
-	go test
+	go test -short $(PKGS)
+
+testall: fixturedata
+	go test $(PKGS)

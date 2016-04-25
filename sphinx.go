@@ -2,7 +2,10 @@
 package sphinx
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"time"
 
@@ -25,7 +28,7 @@ type Config struct {
 // - Timeout of 10 seconds to connect to Sphinx server
 // - Starting / Maximum connection pool size
 var DefaultConfig = Config{
-	Host:             "localhost",
+	Host:             "0.0.0.0",
 	Port:             9312, // Default Sphinx API port
 	ConnectTimeout:   time.Second * 1,
 	MaxQueryTime:     0,
@@ -105,8 +108,6 @@ func DefaultQuery() *SphinxQuery {
 	}
 }
 
-type SphinxResult struct{}
-
 // Init creates a SphinxClient with an initial connection pool to the Sphinx
 // server.  We will need to pass in a config or use the default.
 func (s *SphinxClient) Init(config *Config) error {
@@ -127,7 +128,13 @@ func (s *SphinxClient) Init(config *Config) error {
 		if err != nil {
 			return nil, err
 		}
-		return conn, rawInitializeSphinxConnection(conn)
+
+		// Reset connect deadline to 0 after connection
+		conn.SetDeadline(time.Now().Add(config.ConnectTimeout))
+		log.Println("Initializing sphinx connection")
+		err = rawInitializeSphinxConnection(conn)
+		conn.SetDeadline(time.Time{})
+		return conn, err
 	}
 
 	pool, err := pool.NewChannelPool(10, 30, sphinxConnFactory)
@@ -144,14 +151,17 @@ func (s *SphinxClient) Close() {
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
+// TODO: Decompose this into functions, remove debugging statements
 func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	// Build request first to avoid contention over connections in pool
 	q.MaxQueryTime = s.config.MaxQueryTime
 
-	headerBuf, requestResponseBuf, err := buildRequest(q)
+	headerBuf, requestBuf, err := buildRequest(q)
 	if err != nil {
 		return nil, err
 	}
+
+	log.Println("Request for query built")
 
 	conn, err := s.ConnectionPool.Get()
 	if err != nil {
@@ -168,19 +178,29 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = requestResponseBuf.WriteTo(conn)
+	log.Println("Wrote query header to server")
+	_, err = requestBuf.WriteTo(conn)
+	if err != nil {
+		return nil, err
+	}
+	log.Println("Wrote request Buffer to server")
+
+	responseHeader, err := readHeader(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	requestResponseBuf.Reset()
-	// Will have to check and make sure that reads all data from the server
-	_, err = requestResponseBuf.ReadFrom(conn)
+	// Now need to read the remainder of the response into the buffer
+	// FIXME: Check len to make sure reasonable
+	responseBytes := make([]byte, responseHeader.len)
+	rlen, err := io.ReadFull(conn, responseBytes)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := getResultFromBuffer(requestResponseBuf)
+	log.Printf("%v bytes read from server in response.", rlen)
+
+	result, err := getResultFromBuffer(responseHeader, bytes.NewBuffer(responseBytes))
 
 	return result, err
 }
