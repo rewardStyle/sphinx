@@ -27,7 +27,7 @@ type Config struct {
 var DefaultConfig = Config{
 	Host:             "localhost",
 	Port:             9312, // Default Sphinx API port
-	ConnectTimeout:   time.Second * 10,
+	ConnectTimeout:   time.Second * 1,
 	MaxQueryTime:     0,
 	StartingPoolSize: 1,
 	MaxPoolSize:      30,
@@ -108,12 +108,14 @@ func DefaultQuery() *SphinxQuery {
 type SphinxResult struct{}
 
 // Init creates a SphinxClient with an initial connection pool to the Sphinx
-// server.  We will need to
+// server.  We will need to pass in a config or use the default.
 func (s *SphinxClient) Init(config *Config) error {
 
 	if config == nil {
 		config = &DefaultConfig
 	}
+
+	s.config = *config
 
 	// Factory function that returns a new connection for use in the pool
 	sphinxConnFactory := func() (net.Conn, error) {
@@ -172,6 +174,7 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	}
 
 	requestResponseBuf.Reset()
+	// Will have to check and make sure that reads all data from the server
 	_, err = requestResponseBuf.ReadFrom(conn)
 	if err != nil {
 		return nil, err

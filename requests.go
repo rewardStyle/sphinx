@@ -3,6 +3,8 @@ package sphinx
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"io"
 	"net"
 	"time"
 )
@@ -191,6 +193,27 @@ func buildInternalQuery(query *SphinxQuery) (buf *bytes.Buffer, err error) {
 }
 
 func rawInitializeSphinxConnection(sphinxConnection net.Conn) (err error) {
+	// Have to send protocol major version, make sure agrees (see net_connect_get)
+	err = binary.Write(sphinxConnection, binary.BigEndian, uint32(MAJOR_PROTOCOL_VERSION))
+	if err != nil {
+		return
+	}
+
+	// Now get protocol version back and compare.
+	versionBytes := make([]byte, 4)
+	_, err = io.ReadFull(sphinxConnection, versionBytes)
+	if err != nil {
+		return
+	}
+	serverVersion := binary.BigEndian.Uint32(versionBytes)
+	if serverVersion < MAJOR_PROTOCOL_VERSION {
+		err = fmt.Errorf(
+			"Expected version to be >= `%v` but got `%v`\n",
+			MAJOR_PROTOCOL_VERSION, serverVersion,
+		)
+	}
+
+	// Send header to establish connection
 	reqBuffer := NewSafeWriter(16)
 	// Should this be a bytes.Buffer type?
 	reqBuffer.AddWordToBuffer(uint16(SEARCHD_COMMAND_PERSIST)) // Command

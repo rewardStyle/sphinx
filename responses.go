@@ -155,7 +155,7 @@ func getResultFromBuffer(b *bytes.Buffer) (result *SphinxResult, searchError err
 	// and return them if needed.  Know only have 1 result (if any), since we
 	// always send one query-at-a-time.
 
-	result, searchError = parseResponseBody(b)
+	result, searchError = parseResponseBody(reader)
 	return
 
 }

@@ -2,6 +2,9 @@ package sphinx
 
 const DefaultIndex = "*"
 
+// Sent to / received from server to ensure same version.
+const MAJOR_PROTOCOL_VERSION = 1
+
 // Command versions from sphinxclient.c
 const (
 	VER_COMMAND_EXCERPT  = 0x103
