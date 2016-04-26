@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"runtime/debug"
 	"time"
 )
 
@@ -261,6 +262,8 @@ func (r *ResponseReader) ReadWords(n int) (words []Word) {
 func (r *ResponseReader) ReadString() (s string) {
 	stringLength := r.ReadInt()
 
+	log.Printf("Read %v as string length\n", stringLength)
+
 	// Don't ovewrite error if already set
 	if stringLength < 0 {
 		if r.internalErr == nil {
@@ -300,7 +303,7 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 	defer func() {
 		if r := recover(); r != nil {
 			result = nil
-			searchError = fmt.Errorf("%v", r)
+			searchError = fmt.Errorf("%v: %s\n", r, debug.Stack())
 		}
 		return
 	}()
@@ -312,7 +315,7 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 		break
 	case SEARCHD_WARNING:
 		warning := r.ReadString()
-		log.Printf("Warning: %v\n", warning)
+		log.Printf("Warning reading response body: %v\n", warning)
 	case SEARCHD_ERROR:
 		errMsg := r.ReadString()
 		searchError = errors.New(errMsg)
@@ -325,6 +328,9 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 	// FIXME: Sanity check numFields
 	result.Fields = make([]string, int(numFields))
 	for i := 0; i < int(numFields); i++ {
+		log.Printf("Reading field %v\n", i)
+		// FIXME: HERE is where getting error in test
+		// suspect problem with ReadString
 		result.Fields[i] = r.ReadString()
 	}
 
@@ -372,7 +378,7 @@ func getResultFromBuffer(header *ResponseHeader, b *bytes.Buffer) (result *Sphin
 	defer func() {
 		if r := recover(); r != nil {
 			result = nil
-			searchError = fmt.Errorf("%v", r)
+			searchError = fmt.Errorf("%v: %s", r, debug.Stack())
 		}
 		return
 	}()
@@ -383,19 +389,24 @@ func getResultFromBuffer(header *ResponseHeader, b *bytes.Buffer) (result *Sphin
 		fallthrough
 	case SEARCHD_WARNING:
 		warning := reader.ReadString()
-		log.Printf("Warning: %v\n", warning)
+		log.Printf("Warning reading header: %v\n", warning)
 	case SEARCHD_ERROR:
 		fallthrough
 	case SEARCHD_RETRY:
 		searchError = errors.New(reader.ReadString())
+		return
 	default:
-		searchError = fmt.Errorf("Unknown status code %v from response\n", header.status)
+		searchError = fmt.Errorf("Unknown status code %v in header\n", header.status)
+		return
+	}
+
+	if searchError != nil {
+		return
 	}
 
 	// Now need to parse out responses as in sphinx_run_queries
 	// and return them if needed.  Know only have 1 result (if any), since we
 	// always send one query-at-a-time.
-
 	result, searchError = parseResponseBody(reader)
 	return
 

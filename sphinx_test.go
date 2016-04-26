@@ -174,9 +174,9 @@ func TestBasicClient(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected error establishing connection : %v\n", err)
 		}
-		response, err := s.Query(&SphinxQuery{
-			Keywords: "test",
-		})
+		q := DefaultQuery()
+		q.Keywords = "test"
+		response, err := s.Query(q)
 		if err != nil {
 			t.Errorf("Unexpected error doing basic query: %v\n", err)
 		}

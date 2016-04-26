@@ -47,6 +47,7 @@ type SphinxClient struct {
 // Offset: Distance from beginning of results
 // Limit: Maximum matches to return
 // Cutoff: Stop searching after this limit has been reached.
+// MaxMatches: Maximum # of matches to return (default 1000)
 type Limits struct {
 	Offset     uint32
 	Limit      uint32
