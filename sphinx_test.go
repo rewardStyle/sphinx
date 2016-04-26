@@ -163,7 +163,9 @@ func TestRequestsWithWeights(t *testing.T) {
 // Tests that can establish client, connect to localhost server, and run basic query
 // without error.  Only run if doing long version of tests.
 func TestBasicClient(t *testing.T) {
-	if !testing.Short() {
+	if testing.Short() {
+		t.Skip("Not running simple integration test - don't know if Sphinx configured.")
+	} else {
 		s := SphinxClient{
 			config: DefaultConfig,
 		}
@@ -172,12 +174,13 @@ func TestBasicClient(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected error establishing connection : %v\n", err)
 		}
-		_, err = s.Query(&SphinxQuery{
+		response, err := s.Query(&SphinxQuery{
 			Keywords: "test",
 		})
 		if err != nil {
 			t.Errorf("Unexpected error doing basic query: %v\n", err)
 		}
+		t.Logf("Got response data: %v\n", response)
 		s.Close()
 	}
 }
