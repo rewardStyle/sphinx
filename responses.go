@@ -308,8 +308,6 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 
 	status := r.ReadInt()
 
-	log.Printf("Status for this response is %v\n", status)
-
 	// Response has its own status
 	switch status {
 	case SEARCHD_OK:
@@ -331,9 +329,6 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 	// FIXME: Sanity check numFields
 	result.Fields = make([]string, int(numFields))
 	for i := 0; i < int(numFields); i++ {
-		log.Printf("Reading field %v\n", i)
-		// FIXME: HERE is where getting error in test
-		// suspect problem with ReadString
 		result.Fields[i] = r.ReadString()
 	}
 

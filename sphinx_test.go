@@ -289,9 +289,20 @@ func TestBasicClient(t *testing.T) {
 		q.Comment = ""
 		response, err := s.Query(q)
 		if err != nil {
-			t.Errorf("Unexpected error doing basic query: %v\n", err)
+			t.Fatalf("Unexpected error doing basic query: %v\n", err)
 		}
-		t.Logf("Got response data: %v\n", response)
+
+		if int(response.TotalFound) != len(response.Matches) {
+			t.Errorf(
+				"Mismatch between reported total %v in response and length of matches %v\n",
+				response.TotalFound, len(response.Matches),
+			)
+		}
+
+		if response.Total == 0 {
+			t.Errorf("Expected non-zero total for response, got: %v\n", response.Total)
+		}
+
 		s.Close()
 	}
 }

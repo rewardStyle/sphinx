@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"time"
 )
@@ -199,7 +198,6 @@ func rawInitializeSphinxConnection(sphinxConnection net.Conn) (err error) {
 	if err != nil {
 		return
 	}
-	log.Println("Sending major protocol version")
 	// Now get protocol version back and compare.
 	versionBytes := make([]byte, 4)
 	_, err = io.ReadFull(sphinxConnection, versionBytes)
@@ -213,8 +211,6 @@ func rawInitializeSphinxConnection(sphinxConnection net.Conn) (err error) {
 			MAJOR_PROTOCOL_VERSION, serverVersion,
 		)
 	}
-
-	log.Println("Sending header to server for SEARCHD_COMMAND_PERSIST")
 
 	// Send header to establish connection
 	reqBuffer := NewSafeWriter(16)
@@ -230,7 +226,6 @@ func rawInitializeSphinxConnection(sphinxConnection net.Conn) (err error) {
 	}
 
 	_, err = reqBuffer.Buf().WriteTo(sphinxConnection)
-	log.Println("Wrote header to sphinx server.")
 	return
 }
 

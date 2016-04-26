@@ -3,7 +3,6 @@ package sphinx
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -180,33 +179,42 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Wrote query header to server")
 	_, err = requestBuf.WriteTo(conn)
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Wrote request Buffer to server")
+	log.Println("Wrote request to server")
 
 	responseHeader, err := readHeader(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("Expected header of size %v bytes\n", responseHeader.len)
-
 	// Now need to read the remainder of the response into the buffer
 	// FIXME: Check len to make sure reasonable
 	responseBytes := make([]byte, responseHeader.len)
-	rlen, err := io.ReadFull(conn, responseBytes)
+	_, err = io.ReadFull(conn, responseBytes)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("%v bytes read from server in response.", rlen)
-
-	log.Println(hex.EncodeToString(responseBytes))
-
 	result, err := getResultFromBuffer(responseHeader, bytes.NewBuffer(responseBytes))
 
 	return result, err
+}
+
+// NewSearch gives a better API to creating a query object that can be passed to
+// Query.
+func NewSearch(keywords, index, comment string) *SphinxQuery {
+	q := DefaultQuery()
+	q.Keywords = keywords
+	if index == "" {
+		q.Index = DefaultIndex
+	} else {
+		q.Index = index
+	}
+
+	q.Comment = comment
+	q.MaxQueryTime = DefaultConfig.MaxQueryTime
+	return q
 }
