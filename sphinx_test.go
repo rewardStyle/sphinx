@@ -1,267 +1,308 @@
 package sphinx
 
 import (
-	"fmt"
+	"bufio"
+	"bytes"
+	"encoding/hex"
+	"io/ioutil"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
 )
 
-var (
-	sc *Client
-	//host = "/var/run/searchd.sock"
-	host  = "localhost"
-	index = "test1"
-	words = "test"
-)
+func deserializeRequestBody(b *bytes.Buffer) <-chan string {
+	outputChannel := make(chan string)
+	go func() {
+		var word = make([]byte, 4)
 
-func TestParallelQuery(t *testing.T) {
-	fmt.Println("Running parallel Query() test...")
-	f := func(i int) {
-		scParallel := NewClient()
-		if err := scParallel.Open(); err != nil {
-			t.Fatalf("Parallel %d > %v\n", i, err)
+		outputChannel <- strconv.Itoa(b.Len())
+
+		for byteLength, err := b.Read(word); err == nil; byteLength, err = b.Read(word) {
+			var hexRepresentation = make([]string, 0, byteLength)
+			for i := 0; i < byteLength; i++ {
+				hexRepresentation = append(hexRepresentation, hex.EncodeToString(word[i:i+1]))
+			}
+
+			output := strings.Join(hexRepresentation, ":")
+			// Full 4-byte representation with separators is 11 characters long
+			if len(output) != 11 {
+				output = output + ":"
+			}
+			outputChannel <- output
 		}
 
-		res, err := scParallel.Query(words, index, "Test parallel Query()")
+		close(outputChannel)
+	}()
+	return outputChannel
+}
+
+// TestFixtureRequests compares each line of each fixture file to a request buffer
+// that we generate.  We need to get the file name, generate our own fixture data
+// from the query, index, and comment in the file name, and compare line-by-line
+// to the data from the fixture file.
+func TestFixtureRequests(t *testing.T) {
+	const (
+		prefix = "fixture_data/generated/"
+		suffix = ".tst"
+	)
+	// Get fixture data from generated fixture directory and
+	var (
+		files []os.FileInfo
+		err   error
+	)
+
+	if files, err = ioutil.ReadDir(prefix); err != nil {
+		t.Fatalf(
+			"Could not read fixture files: `%v`\n",
+			err,
+		)
+	}
+
+	for _, file := range files {
+		t.Logf("Testing fixture data for file %v\n", file.Name())
+		fileBaseName := strings.TrimSuffix(file.Name(), suffix)
+		fileParts := strings.Split(fileBaseName, "_")
+
+		// Normalize for missing comment and replace 'ALL' for index with '*'
+		if len(fileParts) == 2 {
+			fileParts = append(fileParts, "")
+		}
+
+		if fileParts[1] == "ALL" {
+			fileParts[1] = "*"
+		}
+
+		q := DefaultQuery()
+		q.Keywords = fileParts[0]
+		q.Index = fileParts[1]
+		q.Comment = fileParts[2]
+
+		buf, err := buildInternalQuery(q)
 		if err != nil {
-			t.Fatalf("Parallel %d > %s\n", i, err)
+			t.Errorf(
+				"Could not build request buffer for input query `%v` - got error `%v`\n",
+				buf, err,
+			)
+			continue
 		}
 
-		if res.Total != 4 || res.TotalFound != 4 {
-			t.Fatalf("Parallel %d > res.Total: %d\tres.TotalFound: %d\n", i, res.Total, res.TotalFound)
+		// Compare each line of the file to each line of the generated hex data
+		fixtureFile, err := os.Open(prefix + file.Name())
+		if err != nil {
+			t.Errorf("Could not open file %v for reading: %v.\n",
+				prefix+file.Name(),
+				err,
+			)
+		}
+		fixtureLines := bufio.NewScanner(fixtureFile)
+
+		if !fixtureLines.Scan() {
+			t.Fatalf("Can't read first line (buffer size) from the fixture data.")
 		}
 
-		if scParallel.GetLastWarning() != "" {
-			fmt.Printf("Parallel %d warning: %s\n", i, scParallel.GetLastWarning())
+		generatedRequestBody := deserializeRequestBody(buf)
+		header := <-generatedRequestBody
+		fixtureHeader := fixtureLines.Text()
+
+		if header != fixtureLines.Text() {
+			t.Errorf(
+				"Buffer length mismatch: fixture data gives %v bytes, generated is %v bytes\n",
+				fixtureHeader,
+				header,
+			)
 		}
 
-		if err := scParallel.Close(); err != nil {
-			t.Fatalf("Parallel %d > %s\n", i, err)
+		t.Logf("Buffer length: %v\n", header)
+		line := 0
+		for hexLine := range generatedRequestBody {
+			line++
+			// We're leaking a goroutine but it doesn't matter - quitting test anyway
+			if !fixtureLines.Scan() {
+				t.Errorf(
+					"Error %v on line %v of our request buffer - no more lines available to "+
+						"read, but still have lines from the fixture file.",
+					fixtureLines.Err(),
+					line,
+				)
+				break
+			}
+			fixtureText := fixtureLines.Text()
+			t.Logf("%-11v\t%-11v\n", fixtureText, hexLine)
+			if fixtureText != hexLine {
+				t.Errorf(
+					"Mismatch on line %v: \n%v\ndoes not match\n%v\n", line, fixtureText, hexLine,
+				)
+			}
 		}
-	}
 
-	//Please use fork mode for "workers" setting of searchd in sphinx.conf, there are some concurrent issues in prefork mode now.
-	for i := 1; i <= 30; i++ {
-		go f(i)
-		if i%10 == 0 {
-			fmt.Printf("Already start %d goroutines...\n", i)
+		if fixtureLines.Scan() {
+			t.Errorf(
+				"Still have line %v (and others?) to read from fixture data, but no "+
+					"more from the generated request body.\n",
+				fixtureLines.Text(),
+			)
 		}
-	}
-}
 
-func TestInitClient(t *testing.T) {
-	fmt.Println("Init sphinx client ...")
+		fixtureFile.Close()
 
-	opts := &Options{
-		Host:    host,
-		Port:    9312,
-		Timeout: 5000,
-	}
-
-	sc = NewClient(opts)
-	if err := sc.Error(); err != nil {
-		t.Fatalf("Init sphinx client > %v\n", err)
-	}
-
-	if err := sc.Open(); err != nil {
-		t.Fatalf("Init sphinx client > %v\n", err)
-	}
-
-	status, err := sc.Status()
-	if err != nil {
-		t.Fatalf("Error: %s\n", err)
-	}
-
-	for _, row := range status {
-		fmt.Printf("%20s:\t%s\n", row[0], row[1])
 	}
 
 }
 
-func TestQuery(t *testing.T) {
-	fmt.Println("Running sphinx Query() test...")
-
-	res, err := sc.Query(words, index, "Test Query()")
-	if err != nil {
-		t.Fatalf("%s\n", err)
-	}
-
-	if res.Total != 4 || res.TotalFound != 4 {
-		t.Fatalf("Query > res.Total: %d\tres.TotalFound: %d\n", res.Total, res.TotalFound)
-	}
-
-	if sc.GetLastWarning() != "" {
-		fmt.Printf("Query warning: %s\n", sc.GetLastWarning())
-	}
-
-	// Test fieldWeights
-	fieldWeights := make(map[string]int)
-	fieldWeights["title"] = 1000
-	fieldWeights["content"] = 1
-	sc.SetFieldWeights(fieldWeights)
-
-	res, err = sc.Query("this", index, "Test fieldWeights")
-	if err != nil {
-		t.Fatalf("%s\n", err)
-	}
-	if res.Matches[0].DocId != 5 {
-		t.Fatalf("Query(fieldweights) > First match is not 5: %v\n", res.Matches)
-	}
+func TestRequestsWithFilters(t *testing.T) {
+	// TODO: Need to have separate folder for testing queries with filters
+	// t.Fail()
 }
 
-func TestAddQueryAndRunQueries(t *testing.T) {
-	fmt.Println("Running sphinx AddQuery() and RunQueries() test...")
-	_, err := sc.AddQuery("my", index, "Test add query")
+func TestRequestsWithWeights(t *testing.T) {
+	// TODO: Need to test index and field weights
+	// t.Fail()
+}
 
-	results, err := sc.RunQueries()
-	if err != nil {
-		t.Fatalf("RunQueries > %s\n", err)
+func TestHeadersEqual(t *testing.T) {
+	const (
+		prefix = "fixture_data/generated_header/"
+		suffix = ".tst"
+	)
+	// Get fixture data from generated fixture directory and
+	var (
+		files []os.FileInfo
+		err   error
+	)
+
+	if files, err = ioutil.ReadDir(prefix); err != nil {
+		t.Fatalf(
+			"Could not read fixture files: `%v`\n",
+			err,
+		)
 	}
 
-	// TestQuery already add one.
-	if len(results) != 2 {
-		t.Fatalf("RunQueries > get %d results.\n", len(results))
+	for _, file := range files {
+		t.Logf("Testing fixture data for file %v\n", file.Name())
+		fileBaseName := strings.TrimSuffix(file.Name(), suffix)
+		fileParts := strings.Split(fileBaseName, "_")
 
-		for i, res := range results {
-			fmt.Printf("%dth result: %#v\n", i, res)
+		// Normalize for missing comment and replace 'ALL' for index with '*'
+		if len(fileParts) == 2 {
+			fileParts = append(fileParts, "")
 		}
-	}
-}
 
-// If you do not use xml data source, just comment this func.
-func TestQueryXml(t *testing.T) {
-	fmt.Println("Running sphinx Query() xml test...")
-
-	// Test word "understand" in index "xml"
-	res, err := sc.Query("understand", "xml", "Test xml Query()")
-	if err != nil {
-		t.Fatalf("Query xml > %s\n", err)
-	}
-
-	if res.Total != 1 || res.TotalFound != 1 {
-		t.Fatalf("Query xml > res.Total: %d\tres.TotalFound: %d\n", res.Total, res.TotalFound)
-	}
-
-	if res.Matches[0].DocId != 1235 {
-		t.Fatalf("Query xml > res.Matches: %v\n", res.Matches)
-	}
-
-	if sc.GetLastWarning() != "" {
-		fmt.Printf("Query xml warning: %s\n", sc.GetLastWarning())
-	}
-}
-
-func TestBuildExcerpts(t *testing.T) {
-	fmt.Println("Running sphinx BuildExcerpts() test...")
-	docs := []string{
-		"this is my first test text to be highlighted, and for the sake of the testing we need to pump its length somewhat",
-		"another test text to be highlighted, below limit",
-		"number three, without phrase match",
-		"final test, not only without phrase match, but also above limit and with swapped phrase text test as well",
-	}
-
-	opts := ExcerptsOpts{
-		BeforeMatch:    "<span style='font-weight:bold;color:red'>",
-		AfterMatch:     "</span>",
-		ChunkSeparator: " ... ",
-		Limit:          60,
-		Around:         3,
-	}
-
-	res, err := sc.BuildExcerpts(docs, index, words, opts)
-	if err != nil {
-		t.Fatalf("BuildExcerpts > %s\n", err)
-	}
-
-	if res[0] != ` ...  is my first <span style='font-weight:bold;color:red'>test</span> text to be ... ` {
-		t.Fatalf("BuildExcerpts res[0]: %#v\n", res[0])
-	}
-	if res[1] != `another <span style='font-weight:bold;color:red'>test</span> text to be highlighted, below limit` {
-		t.Fatalf("BuildExcerpts res[1]: %#v\n", res[1])
-	}
-	if res[2] != `number three, without phrase match` {
-		t.Fatalf("BuildExcerpts res[2]: %#v\n", res[2])
-	}
-	if res[3] != `final <span style='font-weight:bold;color:red'>test</span>, not only without  ...  swapped phrase text <span style='font-weight:bold;color:red'>test</span> as well` {
-		t.Fatalf("BuildExcerpts res[3]: %#v\n", res[3])
-	}
-}
-
-func TestUpdateAttributes(t *testing.T) {
-	fmt.Println("Running sphinx UpdateAttributes() test...")
-	//UpdateAttributes(index string, attrs []string, values [][]interface{}) (ndocs int, err error)
-
-	attrs := []string{"group_id", "group_id2"} //, "cate_ids"
-	v1 := []interface{}{uint64(1), 3, 15}
-	v2 := []interface{}{uint64(2), 4, 16}
-	values := [][]interface{}{v1, v2}
-	//v3 := []interface{uint64(4), []int{4,5,6,7}}
-	ndocs, err := sc.UpdateAttributes(index, attrs, values, false)
-	if err != nil {
-		t.Fatalf("UpdateAttributes > %s\n", err)
-	}
-
-	if ndocs != 2 {
-		t.Fatalf("UpdateAttributes > ndocs: %d\n", ndocs)
-	}
-
-	sc.SetFilter("group_id", []uint64{3, 4}, true) // exclude 3,4, then should get doc3, doc4 and doc5.
-	result, err := sc.Query("", index, "Test update attrs")
-	if err != nil {
-		t.Fatalf("UpdateAttributes > Query > %#v\n", err)
-	}
-
-	if result.Total != 3 {
-		t.Fatalf("UpdateAttributes > total: %d\n", result.Total)
-	}
-
-	if result.Matches[0].DocId != 3 || result.Matches[1].DocId != 4 {
-		t.Fatalf("UpdateAttributes > wrong matches: %#v\n", result.Matches)
-	}
-}
-
-func TestBuildKeywords(t *testing.T) {
-	fmt.Println("Running sphinx BuildKeywords() test...")
-	keywords, err := sc.BuildKeywords("this.is.my query", index, true)
-	if err != nil {
-		t.Fatalf("BuildKeywords > %s\n", err)
-	}
-
-	if len(keywords) != 4 {
-		t.Fatalf("BuildKeywords > just get %d keywords! actually 4 keywords.\n", len(keywords))
-
-		for i, kw := range keywords {
-			fmt.Printf("Keywords %d : %#v\n", i, kw)
+		if fileParts[1] == "ALL" {
+			fileParts[1] = "*"
 		}
+
+		q := DefaultQuery()
+		q.Keywords = fileParts[0]
+		q.Index = fileParts[1]
+		q.Comment = fileParts[2]
+
+		headerBuffer, _, err := buildRequest(q)
+		if err != nil {
+			t.Errorf(
+				"Could not build header buffer for input query `%v` - got error `%v`\n",
+				headerBuffer, err,
+			)
+			continue
+		}
+
+		// Compare each line of the file to each line of the generated hex data
+		fixtureFile, err := os.Open(prefix + file.Name())
+		if err != nil {
+			t.Errorf("Could not open file %v for reading: %v.\n",
+				prefix+file.Name(),
+				err,
+			)
+		}
+		fixtureLines := bufio.NewScanner(fixtureFile)
+
+		if !fixtureLines.Scan() {
+			t.Fatalf("Can't read first line (buffer size) from the fixture data.")
+		}
+
+		generatedRequestBody := deserializeRequestBody(headerBuffer)
+		size := <-generatedRequestBody
+		fixtureSize := fixtureLines.Text()
+
+		if size != fixtureSize {
+			t.Errorf(
+				"Buffer length mismatch: fixture data gives %v bytes, generated is %v bytes\n",
+				fixtureSize,
+				size,
+			)
+		}
+
+		t.Logf("Buffer length: %v\n", size)
+		line := 0
+		for hexLine := range generatedRequestBody {
+			line++
+			// We're leaking a goroutine but it doesn't matter - quitting test anyway
+			if !fixtureLines.Scan() {
+				t.Errorf(
+					"Error %v on line %v of our request buffer - no more lines available to "+
+						"read, but still have lines from the fixture file.",
+					fixtureLines.Err(),
+					line,
+				)
+				break
+			}
+			fixtureText := fixtureLines.Text()
+			t.Logf("%-11v\t%-11v\n", fixtureText, hexLine)
+			if fixtureText != hexLine {
+				t.Errorf(
+					"Mismatch on line %v: \n%v\ndoes not match\n%v\n", line, fixtureText, hexLine,
+				)
+			}
+		}
+
+		if fixtureLines.Scan() {
+			t.Errorf(
+				"Still have line %v (and others?) to read from fixture data, but no "+
+					"more from the generated request body.\n",
+				fixtureLines.Text(),
+			)
+		}
+
+		fixtureFile.Close()
+
 	}
+
 }
 
-func TestGeoDist(t *testing.T) {
-	latitude := DegreeToRadian(29.862991)
-	longitude := DegreeToRadian(121.545471)
-	var radius float32 = 5000.0 // 5Kms
+// Tests that can establish client, connect to localhost server, and run basic query
+// without error.  Only run if doing long version of tests.
+func TestBasicClient(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Not running simple integration test - don't know if Sphinx configured.")
+	} else {
+		s := SphinxClient{
+			config: DefaultConfig,
+		}
 
-	sc = NewClient().SetServer(host, 0)
-	sc.SetGeoAnchor("latitude", "longitude", latitude, longitude)
-	sc.SetSortMode(SPH_SORT_EXTENDED, "@geodist asc")
-	sc.SetFilterFloatRange("@geodist", 0.0, radius, false)
-	if err := sc.Error(); err != nil {
-		t.Fatalf("GeoDist > %v\n", err)
-	}
+		err := s.Init(nil)
+		if err != nil {
+			t.Errorf("Unexpected error establishing connection : %v\n", err)
+		}
+		q := DefaultQuery()
+		q.Keywords = "test"
+		q.Index = "*"
+		q.Comment = ""
+		response, err := s.Query(q)
+		if err != nil {
+			t.Fatalf("Unexpected error doing basic query: %v\n", err)
+		}
 
-	res, err := sc.Query("", index, "Test GeoDist")
-	if err != nil {
-		t.Fatalf("GeoDist > %v\n", err)
-	}
+		if int(response.TotalFound) != len(response.Matches) {
+			t.Errorf(
+				"Mismatch between reported total %v in response and length of matches %v\n",
+				response.TotalFound, len(response.Matches),
+			)
+		}
 
-	// DocId: 2, 1, 3
-	for i, match := range res.Matches {
-		fmt.Printf("%d  DocId:%d  GeoDist:%fm\n", i, match.DocId, match.AttrValues[len(match.AttrValues)-1])
-	}
-	if res.Total != 3 {
-		t.Fatalf("GeoDist > res.Total: %d\n", res.Total)
-	}
+		if response.Total == 0 {
+			t.Errorf("Expected non-zero total for response, got: %v\n", response.Total)
+		}
 
-	if sc.GetLastWarning() != "" {
-		fmt.Printf("TestGeoDist warning: %s\n", sc.GetLastWarning())
+		s.Close()
 	}
 }
