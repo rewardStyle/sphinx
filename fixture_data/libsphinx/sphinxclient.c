@@ -2505,3 +2505,85 @@ int sphinx_get_nth_request_length( sphinx_client * client, int n )
 				 client->req_lens[n - 1];
 
 }
+
+// Equivalent to first part of sphinx_run_queries and net_get_response - just
+// want to return sphinx_dump_response_buf with length in length.
+char * sphinx_dump_response_buf( sphinx_client * client, int * length )
+{
+  // TODO: Implement
+	if (length == NULL) {
+		return NULL;
+	}
+	return NULL;
+
+}
+
+// Have to copy over bits from sphinx_run_queries
+char * sphinx_dump_header( sphinx_client * client )
+{
+	int i, j, k, l, fd, len, nreqs, id64;
+	// Need to dynamically alloc so don't have scope issues, leaking memory
+	// since don't deallocate, but doesn't matter since just using for tests
+	char * req_header = (char *) calloc(32,sizeof(char));
+	char *req, *p, *pmax;
+	sphinx_result * res;
+	union un_attr_value * pval;
+
+	if ( !client )
+		return NULL;
+
+	if ( client->num_reqs<=0 || client->num_reqs>MAX_REQS )
+	{
+		set_error ( client, "num_reqs=%d out of bounds (too many queries?)", client->num_reqs );
+		return NULL;
+	}
+
+	// free previous results
+	sphinx_free_results ( client );
+
+	// send query, get response
+	len = 8;
+	for ( i=0; i<client->num_reqs; i++ )
+		len += client->req_lens[i];
+
+	req = req_header;
+	send_word ( &req, SEARCHD_COMMAND_SEARCH );
+	send_word ( &req, client->ver_search );
+	send_int ( &req, len );
+	send_int ( &req, 0 ); // its a client
+	send_int ( &req, client->num_reqs );
+	return req_header;
+}
+
+int sphinx_header_length( sphinx_client * client)
+{
+	int i, j, k, l, fd, len, nreqs, id64;
+	char req_header[32], *req, *p, *pmax;
+	sphinx_result * res;
+	union un_attr_value * pval;
+
+	if ( !client )
+		return 0;
+
+	if ( client->num_reqs<=0 || client->num_reqs>MAX_REQS )
+	{
+		set_error ( client, "num_reqs=%d out of bounds (too many queries?)", client->num_reqs );
+		return 0;
+	}
+
+	// free previous results
+	sphinx_free_results ( client );
+
+	// send query, get response
+	len = 8;
+	for ( i=0; i<client->num_reqs; i++ )
+		len += client->req_lens[i];
+
+	req = req_header;
+	send_word ( &req, SEARCHD_COMMAND_SEARCH );
+	send_word ( &req, client->ver_search );
+	send_int ( &req, len );
+	send_int ( &req, 0 ); // its a client
+	send_int ( &req, client->num_reqs );
+	return (int)(req-req_header);
+}

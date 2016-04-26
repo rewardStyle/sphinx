@@ -42,6 +42,7 @@ func main() {
 
 		// File already exists, so skip
 		if _, err := os.Stat(fileName); err == nil {
+			writeHeaderData(metaData)
 			continue
 		}
 
@@ -60,5 +61,38 @@ func main() {
 		}
 
 		fixtureFile.Close()
+
+		writeHeaderData(metaData)
+
 	}
+}
+
+func writeHeaderData(metaData []string) {
+	// Now write header file fixture data
+	headerFileName := strings.Join(metaData, "_")
+	headerFileName = strings.Replace(headerFileName, "*", "ALL", -1)
+	headerFileName = "fixture_data/generated_header/" + headerFileName + ".tst"
+	// Already exists
+	if _, err := os.Stat(headerFileName); err == nil {
+		return
+	}
+
+	headerFile, err := os.Create(headerFileName)
+	if err != nil {
+		log.Fatalf("Could not create header file: %v\n", err)
+	}
+
+	// Prepend dump header option
+	metaData = append([]string{"--dump-header"}, metaData...)
+
+	headerCommand := exec.Command("./fixture_data/fixture_data", metaData...)
+	headerCommand.Stdout = headerFile
+
+	if err = headerCommand.Run(); err != nil {
+		log.Fatalf("Error generating header fixture data: `%v`\n", err)
+
+	}
+
+	headerFile.Close()
+
 }

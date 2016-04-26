@@ -262,8 +262,6 @@ func (r *ResponseReader) ReadWords(n int) (words []Word) {
 func (r *ResponseReader) ReadString() (s string) {
 	stringLength := r.ReadInt()
 
-	log.Printf("Read %v as string length\n", stringLength)
-
 	// Don't ovewrite error if already set
 	if stringLength < 0 {
 		if r.internalErr == nil {
@@ -307,7 +305,10 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 		}
 		return
 	}()
+
 	status := r.ReadInt()
+
+	log.Printf("Status for this response is %v\n", status)
 
 	// Response has its own status
 	switch status {
@@ -316,6 +317,8 @@ func parseResponseBody(r ResponseReader) (result *SphinxResult, searchError erro
 	case SEARCHD_WARNING:
 		warning := r.ReadString()
 		log.Printf("Warning reading response body: %v\n", warning)
+	default:
+		fallthrough
 	case SEARCHD_ERROR:
 		errMsg := r.ReadString()
 		searchError = errors.New(errMsg)

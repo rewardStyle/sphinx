@@ -26,7 +26,7 @@ func TestRoundTripInt(t *testing.T) {
 
 	w.AddIntToBuffer(testInteger)
 	if w.err != nil {
-		t.Errorf("Unexpected error writing integer ")
+		t.Errorf("Unexpected error writing integer: %v\n ", w.err)
 	}
 
 	var r = &ResponseReader{
@@ -45,4 +45,32 @@ func TestRoundTripInt(t *testing.T) {
 
 // Basic sanity checking on round-tripping of string
 func TestRoundTripString(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatal(r)
+		}
+	}()
+	const testString = "At least it was here"
+	var b bytes.Buffer
+	var w = &SafeWriter{
+		internalBuf: &b,
+		err:         nil,
+	}
+
+	w.AddStringToBuffer(testString)
+	if w.err != nil {
+		t.Errorf("Unexpected error writing string to buffer: %v\n", w.err)
+	}
+
+	var r = &ResponseReader{
+		Buffer:      &b,
+		internalErr: nil,
+	}
+
+	if recoveredString := r.ReadString(); recoveredString != testString {
+		t.Errorf(
+			"Expected to get string `%v` from buffer, got `%v`\n",
+			testString, recoveredString,
+		)
+	}
 }

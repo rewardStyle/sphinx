@@ -160,6 +160,115 @@ func TestRequestsWithWeights(t *testing.T) {
 	// t.Fail()
 }
 
+func TestHeadersEqual(t *testing.T) {
+	const (
+		prefix = "fixture_data/generated_header/"
+		suffix = ".tst"
+	)
+	// Get fixture data from generated fixture directory and
+	var (
+		files []os.FileInfo
+		err   error
+	)
+
+	if files, err = ioutil.ReadDir(prefix); err != nil {
+		t.Fatalf(
+			"Could not read fixture files: `%v`\n",
+			err,
+		)
+	}
+
+	for _, file := range files {
+		t.Logf("Testing fixture data for file %v\n", file.Name())
+		fileBaseName := strings.TrimSuffix(file.Name(), suffix)
+		fileParts := strings.Split(fileBaseName, "_")
+
+		// Normalize for missing comment and replace 'ALL' for index with '*'
+		if len(fileParts) == 2 {
+			fileParts = append(fileParts, "")
+		}
+
+		if fileParts[1] == "ALL" {
+			fileParts[1] = "*"
+		}
+
+		q := DefaultQuery()
+		q.Keywords = fileParts[0]
+		q.Index = fileParts[1]
+		q.Comment = fileParts[2]
+
+		headerBuffer, _, err := buildRequest(q)
+		if err != nil {
+			t.Errorf(
+				"Could not build header buffer for input query `%v` - got error `%v`\n",
+				headerBuffer, err,
+			)
+			continue
+		}
+
+		// Compare each line of the file to each line of the generated hex data
+		fixtureFile, err := os.Open(prefix + file.Name())
+		if err != nil {
+			t.Errorf("Could not open file %v for reading: %v.\n",
+				prefix+file.Name(),
+				err,
+			)
+		}
+		fixtureLines := bufio.NewScanner(fixtureFile)
+
+		if !fixtureLines.Scan() {
+			t.Fatalf("Can't read first line (buffer size) from the fixture data.")
+		}
+
+		generatedRequestBody := deserializeRequestBody(headerBuffer)
+		size := <-generatedRequestBody
+		fixtureSize := fixtureLines.Text()
+
+		if size != fixtureSize {
+			t.Errorf(
+				"Buffer length mismatch: fixture data gives %v bytes, generated is %v bytes\n",
+				fixtureSize,
+				size,
+			)
+		}
+
+		t.Logf("Buffer length: %v\n", size)
+		line := 0
+		for hexLine := range generatedRequestBody {
+			line++
+			// We're leaking a goroutine but it doesn't matter - quitting test anyway
+			if !fixtureLines.Scan() {
+				t.Errorf(
+					"Error %v on line %v of our request buffer - no more lines available to "+
+						"read, but still have lines from the fixture file.",
+					fixtureLines.Err(),
+					line,
+				)
+				break
+			}
+			fixtureText := fixtureLines.Text()
+			t.Logf("%-11v\t%-11v\n", fixtureText, hexLine)
+			if fixtureText != hexLine {
+				t.Errorf(
+					"Mismatch on line %v: \n%v\ndoes not match\n%v\n", line, fixtureText, hexLine,
+				)
+			}
+		}
+
+		if fixtureLines.Scan() {
+			t.Errorf(
+				"Still have line %v (and others?) to read from fixture data, but no "+
+					"more from the generated request body.\n",
+				fixtureLines.Text(),
+			)
+		}
+
+		fixtureFile.Close()
+
+	}
+
+}
+
 // Tests that can establish client, connect to localhost server, and run basic query
 // without error.  Only run if doing long version of tests.
 func TestBasicClient(t *testing.T) {
@@ -176,6 +285,8 @@ func TestBasicClient(t *testing.T) {
 		}
 		q := DefaultQuery()
 		q.Keywords = "test"
+		q.Index = "*"
+		q.Comment = ""
 		response, err := s.Query(q)
 		if err != nil {
 			t.Errorf("Unexpected error doing basic query: %v\n", err)
