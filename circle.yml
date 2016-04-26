@@ -9,6 +9,8 @@ machine:
         - docker
 
 dependencies:
+    pre:
+        - go get github.com/Masterminds/glide
     override:
         - sudo rm -rf /home/ubuntu/.go_workspace/src
         - mkdir -p "$(dirname $GOPATH/$IMPORT_PATH)"

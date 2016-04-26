@@ -3,6 +3,7 @@ package sphinx
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -191,6 +192,8 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 		return nil, err
 	}
 
+	log.Printf("Expected header of size %v bytes\n", responseHeader.len)
+
 	// Now need to read the remainder of the response into the buffer
 	// FIXME: Check len to make sure reasonable
 	responseBytes := make([]byte, responseHeader.len)
@@ -200,6 +203,8 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	}
 
 	log.Printf("%v bytes read from server in response.", rlen)
+
+	log.Println(hex.EncodeToString(responseBytes))
 
 	result, err := getResultFromBuffer(responseHeader, bytes.NewBuffer(responseBytes))
 

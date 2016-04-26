@@ -388,8 +388,7 @@ func getResultFromBuffer(header *ResponseHeader, b *bytes.Buffer) (result *Sphin
 	var reader = ResponseReader{Buffer: b, internalErr: nil}
 
 	switch header.status {
-	case SEARCHD_OK:
-		fallthrough
+	case SEARCHD_OK: // Skip
 	case SEARCHD_WARNING:
 		warning := reader.ReadString()
 		log.Printf("Warning reading header: %v\n", warning)

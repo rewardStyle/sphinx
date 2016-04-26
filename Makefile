@@ -8,8 +8,9 @@ fixture_generator:
 	GO15VENDOREXPERIMENT=1 CGOENABLED=0 go build -o fixture_data/generate_fixtures fixture_data/generate_fixtures.go
 
 clean:
-	rm fixture_data/generate_fixtures
-	rm fixture_data/generated/*.tst
+	rm -f fixture_data/generate_fixtures
+	rm -f fixture_data/generated/*.tst
+	rm -f fixture_data/generated_header/*.tst
 
 fixturedata: fixture_generator
 	fixture_data/generate_fixtures
@@ -17,5 +18,5 @@ fixturedata: fixture_generator
 test: fixturedata
 	go test -short $(PKGS)
 
-testall: fixturedata
+testall: clean fixturedata
 	go test $(PKGS)
