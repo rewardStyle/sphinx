@@ -27,7 +27,7 @@ There is a vendored version of libsphinxclient in `fixture_data/libsphinx` which
 can be built from source with `make`.  In `fixture_data`, there is a small helper
 program which can be used to generate fixture data for requests and responses
 for a given query.  Standard fixture data generated using this program is
-included in `fixture_data/generated` is used by the unit tests to verify correctness.
+included in `fixture_data/generated` and is used by the unit tests to verify correctness.
 
 ## Local Sphinx setup
 
