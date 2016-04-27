@@ -23,23 +23,25 @@ type Config struct {
 	MaxQueryTime time.Duration // Convert to milliseconds before sending
 }
 
-// DefaultConfig provides sane defaults for the Sphinx Client
+// NewDefaultConfig provides sane defaults for the Sphinx Client
 // - Listen on localhost with default Sphinx API port
 // - Timeout of 10 seconds to connect to Sphinx server
 // - Starting / Maximum connection pool size
-var DefaultConfig = Config{
-	Host:             "0.0.0.0",
-	Port:             9312, // Default Sphinx API port
-	ConnectTimeout:   time.Second * 1,
-	MaxQueryTime:     0,
-	StartingPoolSize: 1,
-	MaxPoolSize:      30,
+func NewDefaultConfig() *Config {
+	return &Config{
+		Host:             "0.0.0.0",
+		Port:             9312, // Default Sphinx API port
+		ConnectTimeout:   time.Second * 1,
+		MaxQueryTime:     0,
+		StartingPoolSize: 1,
+		MaxPoolSize:      30,
+	}
 }
 
 // SphinxClient represents a pooled connection to the Sphinx server
 // Thread-safe after being opened.
 type SphinxClient struct {
-	config         Config
+	Config         Config
 	ConnectionPool pool.Pool
 }
 
@@ -114,17 +116,17 @@ func DefaultQuery() *SphinxQuery {
 func (s *SphinxClient) Init(config *Config) error {
 
 	if config == nil {
-		config = &DefaultConfig
+		config = NewDefaultConfig()
 	}
 
-	s.config = *config
+	s.Config = *config
 
 	// Factory function that returns a new connection for use in the pool
 	sphinxConnFactory := func() (net.Conn, error) {
 		conn, err := net.DialTimeout(
 			"tcp",
-			fmt.Sprintf("%s:%d", s.config.Host, s.config.Port),
-			s.config.ConnectTimeout,
+			fmt.Sprintf("%s:%d", s.Config.Host, s.Config.Port),
+			s.Config.ConnectTimeout,
 		)
 		if err != nil {
 			return nil, err
@@ -155,7 +157,7 @@ func (s *SphinxClient) Close() {
 // TODO: Decompose this into functions, remove debugging statements
 func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	// Build request first to avoid contention over connections in pool
-	q.MaxQueryTime = s.config.MaxQueryTime
+	q.MaxQueryTime = s.Config.MaxQueryTime
 
 	headerBuf, requestBuf, err := buildRequest(q)
 	if err != nil {
@@ -215,6 +217,5 @@ func NewSearch(keywords, index, comment string) *SphinxQuery {
 	}
 
 	q.Comment = comment
-	q.MaxQueryTime = DefaultConfig.MaxQueryTime
 	return q
 }
