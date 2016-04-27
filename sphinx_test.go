@@ -276,7 +276,7 @@ func TestBasicClient(t *testing.T) {
 		t.Skip("Not running simple integration test - don't know if Sphinx configured.")
 	} else {
 		s := SphinxClient{
-			config: DefaultConfig,
+			Config: *NewDefaultConfig(),
 		}
 
 		err := s.Init(nil)

@@ -58,6 +58,14 @@ import (
 ```
 More examples can be found in test files.
 
+## TODO (Make me better)
+
+- Make some of the names more idiomatic - i.e.,  `Client` rather than `SphinxClient`.
+- Make error handling with `ResponseReader` work more consistently - refactor to get
+  rid of `internalErr` and only have ReadFoo panic on errors and handled by callers.
+- Add tests based on captured response data (make fixture_data program capture 
+  response) so that can do unit tests without running Sphinx instance.
+
 ## LICENSE
 
 (Changed from BSD -> GPLv2 so that we can vendor in libsphinxclient).
