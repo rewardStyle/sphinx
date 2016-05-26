@@ -150,7 +150,9 @@ func (s *SphinxClient) Init(config *Config) error {
 // Close closes the connection pool used by the client, which closes all
 // outstanding connections
 func (s *SphinxClient) Close() {
-	s.ConnectionPool.Close()
+	if s.ConnectionPool != nil {
+		s.ConnectionPool.Close()
+	}
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
