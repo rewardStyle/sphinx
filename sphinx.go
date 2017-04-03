@@ -121,6 +121,12 @@ func (s *SphinxClient) Init(config *Config) error {
 
 	s.Config = *config
 
+	s.PoolInit()
+
+	return nil
+}
+
+func (s *SphinxClient) PoolInit() error {
 	// Factory function that returns a new connection for use in the pool
 	sphinxConnFactory := func() (net.Conn, error) {
 		conn, err := net.DialTimeout(
@@ -133,7 +139,7 @@ func (s *SphinxClient) Init(config *Config) error {
 		}
 
 		// Reset connect deadline to 0 after connection
-		conn.SetDeadline(time.Now().Add(config.ConnectTimeout))
+		conn.SetDeadline(time.Now().Add(s.Config.ConnectTimeout))
 		log.Println("Initializing sphinx connection")
 		err = rawInitializeSphinxConnection(conn)
 		conn.SetDeadline(time.Time{})
@@ -155,6 +161,22 @@ func (s *SphinxClient) Close() {
 	}
 }
 
+// Removes bad connection from connection pool
+func (s *SphinxClient) RemoveBadConnection(c net.Conn) {
+	// Type assertion as pool connection - have to since what is returned is
+	// base interface type.
+	if poolConn, ok := c.(*pool.PoolConn); ok {
+		log.Printf("Removing bad connection from pool")
+		poolConn.MarkUnusable()
+	}
+
+    // Too many bad connections, reinitialize the pool
+	if s.ConnectionPool.Len() == 0 {
+		s.Close()
+		s.PoolInit()
+	}
+}
+
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
 // TODO: Decompose this into functions, remove debugging statements
 func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
@@ -170,28 +192,31 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 
 	conn, err := s.ConnectionPool.Get()
 	if err != nil {
-		// Type assertion as pool connection - have to since what is returned is
-		// base interface type.
-		if poolConn, ok := conn.(*pool.PoolConn); ok {
-			poolConn.MarkUnusable()
-		}
-		return nil, err
+		log.Printf("Error while getting connection from pool: %v", err)
+		s.RemoveBadConnection(conn)
+		return s.Query(q)
 	}
 	defer conn.Close()
 
 	_, err = headerBuf.WriteTo(conn)
 	if err != nil {
-		return nil, err
+		log.Printf("Error while writing to headerBuf: %v", err)
+		s.RemoveBadConnection(conn)
+		return s.Query(q)
 	}
 	_, err = requestBuf.WriteTo(conn)
 	if err != nil {
-		return nil, err
+		log.Printf("Error while writing to requestBuf: %v", err)
+		s.RemoveBadConnection(conn)
+		return s.Query(q)
 	}
 	log.Println("Wrote request to server")
 
 	responseHeader, err := readHeader(conn)
 	if err != nil {
-		return nil, err
+		log.Printf("Error while reading responseHeader: %v", err)
+		s.RemoveBadConnection(conn)
+		return s.Query(q)
 	}
 
 	// Now need to read the remainder of the response into the buffer
