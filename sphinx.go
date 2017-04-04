@@ -185,12 +185,14 @@ func (s *SphinxClient) RemoveBadConnection(c net.Conn) {
 }
 
 func (s *SphinxClient) HandleConnectionError(q *SphinxQuery, c net.Conn, err error) (*SphinxResult, error) {
-	s.mu.Lock()
 	if s.ReconnectAttemptCount >= s.Config.MaxReconnectAttempts {
 		return nil, err
 	}
+
+	s.mu.Lock()
 	s.ReconnectAttemptCount++
 	s.mu.Unlock()
+
 	s.RemoveBadConnection(c)
 	return s.Query(q)
 }
@@ -243,7 +245,9 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	result, err := getResultFromBuffer(responseHeader, bytes.NewBuffer(responseBytes))
 
 	// Query function succeeded. Reset reconnect attempt count.
+	s.mu.Lock()
 	s.ReconnectAttemptCount = 0
+	s.mu.Unlock()
 
 	return result, err
 }
