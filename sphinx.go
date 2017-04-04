@@ -21,6 +21,7 @@ type Config struct {
 	MaxPoolSize      int
 	// Query-specific config option
 	MaxQueryTime time.Duration // Convert to milliseconds before sending
+	MaxReconnectAttempts int
 }
 
 // NewDefaultConfig provides sane defaults for the Sphinx Client
@@ -29,20 +30,22 @@ type Config struct {
 // - Starting / Maximum connection pool size
 func NewDefaultConfig() *Config {
 	return &Config{
-		Host:             "0.0.0.0",
-		Port:             9312, // Default Sphinx API port
-		ConnectTimeout:   time.Second * 1,
-		MaxQueryTime:     0,
-		StartingPoolSize: 1,
-		MaxPoolSize:      30,
+		Host:                 "0.0.0.0",
+		Port:                 9312, // Default Sphinx API port
+		ConnectTimeout:       time.Second * 1,
+		MaxQueryTime:         0,
+		StartingPoolSize:     1,
+		MaxPoolSize:          30,
+		MaxReconnectAttempts: 10,
 	}
 }
 
 // SphinxClient represents a pooled connection to the Sphinx server
 // Thread-safe after being opened.
 type SphinxClient struct {
-	Config         Config
-	ConnectionPool pool.Pool
+	Config                 Config
+	ConnectionPool         pool.Pool
+	ReconnectAttemptCount  int
 }
 
 // Limits:
@@ -121,9 +124,11 @@ func (s *SphinxClient) Init(config *Config) error {
 
 	s.Config = *config
 
-	s.PoolInit()
+	s.ReconnectAttemptCount = 0
 
-	return nil
+	err := s.PoolInit()
+
+	return err
 }
 
 func (s *SphinxClient) PoolInit() error {
@@ -146,7 +151,7 @@ func (s *SphinxClient) PoolInit() error {
 		return conn, err
 	}
 
-	pool, err := pool.NewChannelPool(10, 30, sphinxConnFactory)
+	pool, err := pool.NewChannelPool(s.Config.StartingPoolSize, s.Config.MaxPoolSize, sphinxConnFactory)
 
 	s.ConnectionPool = pool
 
@@ -170,11 +175,20 @@ func (s *SphinxClient) RemoveBadConnection(c net.Conn) {
 		poolConn.MarkUnusable()
 	}
 
-    // Too many bad connections, reinitialize the pool
+	// Too many bad connections, reinitialize the pool
 	if s.ConnectionPool.Len() == 0 {
 		s.Close()
 		s.PoolInit()
 	}
+}
+
+func (s *SphinxClient) HandleConnectionError(q *SphinxQuery, c net.Conn, err error) (*SphinxResult, error) {
+	if s.ReconnectAttemptCount >= s.Config.MaxReconnectAttempts {
+		return nil, err
+	}
+	s.ReconnectAttemptCount++
+	s.RemoveBadConnection(c)
+	return s.Query(q)
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
@@ -192,31 +206,26 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 
 	conn, err := s.ConnectionPool.Get()
 	if err != nil {
-		log.Printf("Error while getting connection from pool: %v", err)
-		s.RemoveBadConnection(conn)
-		return s.Query(q)
+		return s.HandleConnectionError(q, conn, err)
 	}
+
 	defer conn.Close()
 
 	_, err = headerBuf.WriteTo(conn)
 	if err != nil {
-		log.Printf("Error while writing to headerBuf: %v", err)
-		s.RemoveBadConnection(conn)
-		return s.Query(q)
+		return s.HandleConnectionError(q, conn, err)
 	}
+
 	_, err = requestBuf.WriteTo(conn)
 	if err != nil {
-		log.Printf("Error while writing to requestBuf: %v", err)
-		s.RemoveBadConnection(conn)
-		return s.Query(q)
+		return s.HandleConnectionError(q, conn, err)
 	}
+
 	log.Println("Wrote request to server")
 
 	responseHeader, err := readHeader(conn)
 	if err != nil {
-		log.Printf("Error while reading responseHeader: %v", err)
-		s.RemoveBadConnection(conn)
-		return s.Query(q)
+		return s.HandleConnectionError(q, conn, err)
 	}
 
 	// Now need to read the remainder of the response into the buffer
@@ -228,6 +237,9 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	}
 
 	result, err := getResultFromBuffer(responseHeader, bytes.NewBuffer(responseBytes))
+
+	// Query function succeeded. Reset reconnect attempt count.
+	s.ReconnectAttemptCount = 0
 
 	return result, err
 }
