@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"time"
+	"sync"
 
 	"github.com/fatih/pool"
 )
@@ -46,6 +47,7 @@ type SphinxClient struct {
 	Config                 Config
 	ConnectionPool         pool.Pool
 	ReconnectAttemptCount  int
+	mu                     sync.Mutex
 }
 
 // Limits:
@@ -183,10 +185,12 @@ func (s *SphinxClient) RemoveBadConnection(c net.Conn) {
 }
 
 func (s *SphinxClient) HandleConnectionError(q *SphinxQuery, c net.Conn, err error) (*SphinxResult, error) {
+	s.mu.Lock()
 	if s.ReconnectAttemptCount >= s.Config.MaxReconnectAttempts {
 		return nil, err
 	}
 	s.ReconnectAttemptCount++
+	s.mu.Unlock()
 	s.RemoveBadConnection(c)
 	return s.Query(q)
 }
