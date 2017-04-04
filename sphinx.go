@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"time"
+	"sync"
 
 	"github.com/fatih/pool"
 )
@@ -21,6 +22,7 @@ type Config struct {
 	MaxPoolSize      int
 	// Query-specific config option
 	MaxQueryTime time.Duration // Convert to milliseconds before sending
+	MaxReconnectAttempts int
 }
 
 // NewDefaultConfig provides sane defaults for the Sphinx Client
@@ -29,20 +31,23 @@ type Config struct {
 // - Starting / Maximum connection pool size
 func NewDefaultConfig() *Config {
 	return &Config{
-		Host:             "0.0.0.0",
-		Port:             9312, // Default Sphinx API port
-		ConnectTimeout:   time.Second * 1,
-		MaxQueryTime:     0,
-		StartingPoolSize: 1,
-		MaxPoolSize:      30,
+		Host:                 "0.0.0.0",
+		Port:                 9312, // Default Sphinx API port
+		ConnectTimeout:       time.Second * 1,
+		MaxQueryTime:         0,
+		StartingPoolSize:     1,
+		MaxPoolSize:          30,
+		MaxReconnectAttempts: 10,
 	}
 }
 
 // SphinxClient represents a pooled connection to the Sphinx server
 // Thread-safe after being opened.
 type SphinxClient struct {
-	Config         Config
-	ConnectionPool pool.Pool
+	Config                 Config
+	ConnectionPool         pool.Pool
+	ReconnectAttemptCount  int
+	mu                     sync.Mutex
 }
 
 // Limits:
@@ -121,6 +126,14 @@ func (s *SphinxClient) Init(config *Config) error {
 
 	s.Config = *config
 
+	s.ReconnectAttemptCount = 0
+
+	err := s.PoolInit()
+
+	return err
+}
+
+func (s *SphinxClient) PoolInit() error {
 	// Factory function that returns a new connection for use in the pool
 	sphinxConnFactory := func() (net.Conn, error) {
 		conn, err := net.DialTimeout(
@@ -133,14 +146,14 @@ func (s *SphinxClient) Init(config *Config) error {
 		}
 
 		// Reset connect deadline to 0 after connection
-		conn.SetDeadline(time.Now().Add(config.ConnectTimeout))
+		conn.SetDeadline(time.Now().Add(s.Config.ConnectTimeout))
 		log.Println("Initializing sphinx connection")
 		err = rawInitializeSphinxConnection(conn)
 		conn.SetDeadline(time.Time{})
 		return conn, err
 	}
 
-	pool, err := pool.NewChannelPool(10, 30, sphinxConnFactory)
+	pool, err := pool.NewChannelPool(s.Config.StartingPoolSize, s.Config.MaxPoolSize, sphinxConnFactory)
 
 	s.ConnectionPool = pool
 
@@ -153,6 +166,35 @@ func (s *SphinxClient) Close() {
 	if s.ConnectionPool != nil {
 		s.ConnectionPool.Close()
 	}
+}
+
+// Removes bad connection from connection pool
+func (s *SphinxClient) RemoveBadConnection(c net.Conn) {
+	// Type assertion as pool connection - have to since what is returned is
+	// base interface type.
+	if poolConn, ok := c.(*pool.PoolConn); ok {
+		log.Printf("Removing bad connection from pool")
+		poolConn.MarkUnusable()
+	}
+
+	// Too many bad connections, reinitialize the pool
+	if s.ConnectionPool.Len() == 0 {
+		s.Close()
+		s.PoolInit()
+	}
+}
+
+func (s *SphinxClient) HandleConnectionError(q *SphinxQuery, c net.Conn, err error) (*SphinxResult, error) {
+	if s.ReconnectAttemptCount >= s.Config.MaxReconnectAttempts {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	s.ReconnectAttemptCount++
+	s.mu.Unlock()
+
+	s.RemoveBadConnection(c)
+	return s.Query(q)
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
@@ -170,28 +212,26 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 
 	conn, err := s.ConnectionPool.Get()
 	if err != nil {
-		// Type assertion as pool connection - have to since what is returned is
-		// base interface type.
-		if poolConn, ok := conn.(*pool.PoolConn); ok {
-			poolConn.MarkUnusable()
-		}
-		return nil, err
+		return s.HandleConnectionError(q, conn, err)
 	}
+
 	defer conn.Close()
 
 	_, err = headerBuf.WriteTo(conn)
 	if err != nil {
-		return nil, err
+		return s.HandleConnectionError(q, conn, err)
 	}
+
 	_, err = requestBuf.WriteTo(conn)
 	if err != nil {
-		return nil, err
+		return s.HandleConnectionError(q, conn, err)
 	}
+
 	log.Println("Wrote request to server")
 
 	responseHeader, err := readHeader(conn)
 	if err != nil {
-		return nil, err
+		return s.HandleConnectionError(q, conn, err)
 	}
 
 	// Now need to read the remainder of the response into the buffer
@@ -203,6 +243,11 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	}
 
 	result, err := getResultFromBuffer(responseHeader, bytes.NewBuffer(responseBytes))
+
+	// Query function succeeded. Reset reconnect attempt count.
+	s.mu.Lock()
+	s.ReconnectAttemptCount = 0
+	s.mu.Unlock()
 
 	return result, err
 }
