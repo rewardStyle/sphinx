@@ -169,7 +169,7 @@ func (s *SphinxClient) Close() {
 }
 
 // Removes bad connection from connection pool
-func (s *SphinxClient) RemoveBadConnection(c net.Conn) {
+func (s *SphinxClient) RemoveBadConnection(c net.Conn) (err error) {
 	// Type assertion as pool connection - have to since what is returned is
 	// base interface type.
 	if poolConn, ok := c.(*pool.PoolConn); ok {
@@ -180,8 +180,11 @@ func (s *SphinxClient) RemoveBadConnection(c net.Conn) {
 	// Too many bad connections, reinitialize the pool
 	if s.ConnectionPool.Len() == 0 {
 		s.Close()
-		s.PoolInit()
+		err = s.PoolInit()
+		return err
 	}
+
+	return nil
 }
 
 func (s *SphinxClient) HandleConnectionError(q *SphinxQuery, c net.Conn, err error) (*SphinxResult, error) {
@@ -193,13 +196,22 @@ func (s *SphinxClient) HandleConnectionError(q *SphinxQuery, c net.Conn, err err
 	s.ReconnectAttemptCount++
 	s.mu.Unlock()
 
-	s.RemoveBadConnection(c)
+	err = s.RemoveBadConnection(c)
+
+	if err != nil {
+		return nil, err
+	}
+
 	return s.Query(q)
 }
 
 // Query takes SphinxQuery objects and spawns off requests to Sphinx for them
 // TODO: Decompose this into functions, remove debugging statements
 func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
+	if s.ConnectionPool == nil {
+		poolErr := s.PoolInit()
+		return nil, poolErr
+	}
 	// Build request first to avoid contention over connections in pool
 	q.MaxQueryTime = s.Config.MaxQueryTime
 
@@ -209,10 +221,10 @@ func (s *SphinxClient) Query(q *SphinxQuery) (*SphinxResult, error) {
 	}
 
 	log.Println("Request for query built")
-
 	conn, err := s.ConnectionPool.Get()
 	if err != nil {
-		return s.HandleConnectionError(q, conn, err)
+		// return s.HandleConnectionError(q, conn, err)
+		return nil, err
 	}
 
 	defer conn.Close()
